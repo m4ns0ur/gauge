@@ -36,3 +36,13 @@ go.work.sum
 # Go build cache
 .gocache/
 
+
+# Local Go module cache used by scripts/go.sh
+.gopath/
+
+# Default local Gauge data directory used by examples
+.gauge-data/
+examples/.gauge-data/
+
+# Local binaries
+/bin/

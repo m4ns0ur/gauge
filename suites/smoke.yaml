@@ -1,0 +1,6 @@
+schema_version: 1
+id: smoke
+name: Gauge smoke suite
+description: A single deterministic repository task for validating a configuration end to end.
+tasks:
+  - id: greeting-all

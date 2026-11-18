@@ -1,0 +1,46 @@
+# Example Gauge configuration.
+#
+# This configuration runs the smoke suite with the deterministic fake adapter,
+# which writes a candidate implementation instead of calling a model. It
+# exercises the full lifecycle: fixture workspace, agent execution, diff
+# capture, independent evaluation, and reporting.
+#
+#   gauge run --config examples/gauge.toml --suite smoke --agent fake
+
+data_dir = "./.gauge-data"
+tasks_dir = "../tasks"
+suites_dir = "../suites"
+
+[retention]
+# keep_failed (default), keep_all, or delete_all
+workspace = "keep_failed"
+
+[defaults]
+repetitions = 1
+
+[adapters.fake]
+enabled = true
+
+[adapters.fake.options]
+mode = "write"
+agent_version = "fake-1.0.0"
+model = "fake/deterministic"
+provider = "fake"
+
+[adapters.fake.options.usage]
+input_tokens = 420
+output_tokens = 96
+total_tokens = 516
+
+[adapters.fake.options.files]
+"greeting_all.go" = '''package greeting
+
+// GreetAll returns one greeting per name, in order.
+func GreetAll(names []string) []string {
+	out := make([]string, 0, len(names))
+	for _, name := range names {
+		out = append(out, Greet(name))
+	}
+	return out
+}
+'''

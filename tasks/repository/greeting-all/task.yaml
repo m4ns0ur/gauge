@@ -1,0 +1,33 @@
+schema_version: 1
+id: greeting-all
+name: Add batch greeting support
+category: repository-engineering
+difficulty: easy
+description: Add GreetAll without changing existing Greet behavior.
+tags:
+  - go
+  - library
+  - backward-compatibility
+
+fixture:
+  path: ../../../fixtures/greeting-go.git
+  revision: f80f6ef179c10f09dd703aa5760b12e770df9688
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 2m
+
+provenance:
+  origin: Authored for Gauge as a smoke task
+  license: MIT
+  notes: Fixture lives at fixtures/src/greeting-go and is rebuilt by scripts/fixture.sh.

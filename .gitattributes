@@ -1,0 +1,8 @@
+# Bare fixture objects are zlib-compressed binary data; never normalize them.
+fixtures/**/objects/** -text
+
+# Evaluator and helper scripts must keep LF endings on every platform.
+*.sh text eol=lf
+
+# Git's own pack-refs output ends its header line with a space.
+fixtures/**/packed-refs -whitespace
