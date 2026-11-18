@@ -44,3 +44,22 @@ func GreetAll(names []string) []string {
 	return out
 }
 '''
+
+# Iris adapter (optional). Uncomment to run the same suites against Iris:
+#
+#   gauge run --config examples/gauge.toml --suite smoke --agent iris
+#
+# Gauge gives each attempt a fresh Iris home, so nothing from ~/.iris applies.
+# settings_file is copied into that home and is how the model, context window,
+# and [security.shell] policy are configured. Adapter paths such as this one
+# resolve against the working directory, so run commands from the repository
+# root. A run's --model flag wins.
+#
+# [adapters.iris]
+# enabled = true
+#
+# [adapters.iris.options]
+# command = "iris"
+# model = "qwen3.6-35B-Q1"
+# base_url = "http://127.0.0.1:8080/v1"
+# settings_file = "examples/iris-settings.toml"

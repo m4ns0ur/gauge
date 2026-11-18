@@ -6,7 +6,9 @@
 - Git (used to materialize fixture workspaces)
 - The toolchain each task's evaluator expects (the bundled task needs `go`)
 
-No model or API key is required for the fake-adapter smoke run.
+No model or API key is required for the fake-adapter smoke run. To run Iris you
+also need the `iris` executable on `PATH` (or configured explicitly) and a
+running OpenAI-compatible model endpoint.
 
 ## Build
 
@@ -67,6 +69,36 @@ Unknown configuration fields are errors. Invalid retention values, repetition
 counts outside 1–100, disabled adapters with options, and non-JSON-serializable
 options are rejected before any run.
 
+### Iris adapter configuration
+
+```toml
+[adapters.iris]
+enabled = true
+
+[adapters.iris.options]
+command = "iris"                               # executable name or path
+model = "qwen3.6-35B-Q1"                       # optional; a run's --model wins
+base_url = "http://127.0.0.1:8080/v1"          # optional; passed as --base-url
+settings_file = "examples/iris-settings.toml"  # optional; copied per attempt
+debug = false
+```
+
+Gauge gives every attempt a fresh Iris home, so nothing from `~/.iris` applies.
+`settings_file` is an Iris `settings.toml` copied to
+`<attempt>/iris-home/settings.toml` before the agent starts; use it for the model
+list, context window, and `[security.shell]` policy
+([examples/iris-settings.toml](../examples/iris-settings.toml) is a starting
+point). CLI flags that Gauge passes (`--model`, `--base-url`) take precedence over
+the file. Adapter option paths, including `settings_file`, resolve against Gauge's
+working directory rather than the config file; use an absolute path in scripts. A
+fresh home has no default model and its shell policy defaults to `approval`, which
+fails closed in headless mode, so set `model` and configure shell access when a
+task needs it.
+
+`gauge doctor` checks that the configured executable exists. A missing agent
+binary is a warning, and `gauge agents list` shows the adapter as `unavailable`;
+`gauge run --agent iris` then fails before any attempt starts.
+
 ## Commands
 
 ```bash
@@ -110,6 +142,21 @@ greeting-all  repository-engineering  1         1     0     0      0            
 Progress lines go to stderr; the report goes to stdout. The command prints the
 experiment ID for follow-up commands.
 
+### Run against Iris
+
+```bash
+gauge run --config examples/gauge.toml --suite smoke --agent iris
+gauge run --config examples/gauge.toml --suite smoke --agent iris --model qwen3.6-35B-Q1
+```
+
+The same task files, evaluator, and fixture revision are used; only the adapter
+changes. Iris's raw JSONL stream and stderr land in `stdout.log`/`stderr.log`,
+and normalized events in `events.jsonl`. `--home` is always a fresh directory
+inside the attempt, so repetitions cannot share agent state. See
+[adapters.md](adapters.md#iris-implemented) for the event mapping and known
+limitations (agent version is unavailable, and headless shell commands need an
+allowlist or approval hook).
+
 ### Select tasks and repetitions
 
 ```bash
@@ -149,11 +196,11 @@ Logs, events, diffs, evaluation JSON, and metadata are **never** deleted with th
 workspace. Retention only removes the `workspace/` directory.
 
 Tool caches, isolated agent home directories, and the evaluator scratch directory
-(`evaluation-scratch/`, `setup-home/`, `setup-tmp/`, `agent-home/`, `agent-tmp/`)
-are removed after **every** attempt unless the policy is `keep_all`. They are not
-evidence — the evaluator's verdict, logs, checks, and artifacts are captured
-separately — and retaining Go build caches alone can consume hundreds of megabytes
-per attempt. Use `keep_all` when debugging evaluator scratch contents.
+(`evaluation-scratch/`, `setup-home/`, `setup-tmp/`, `agent-home/`, `agent-tmp/`,
+`iris-home/`) are removed after **every** attempt unless the policy is `keep_all`.
+They are not evidence — the evaluator's verdict, logs, checks, and artifacts are
+captured separately — and retaining Go build caches alone can consume hundreds of
+megabytes per attempt. Use `keep_all` when debugging evaluator scratch contents.
 
 Layout:
 
@@ -200,10 +247,10 @@ gauge export <experiment-id> --format json > report.json
 ## Doctor
 
 `gauge doctor` checks configuration, data-directory writability, task/suite
-validity and resolution, Git availability, adapter configuration, and known
-adapter gaps. It never makes an inference call. Exit code `3` means at least one
-check failed; warnings (including the local-sandbox warning) do not fail the
-command.
+validity and resolution, Git availability, and adapter configuration and
+availability. It never makes an inference call. Exit code `3` means at least one
+check failed; warnings (including a missing agent binary and the local-sandbox
+warning) do not fail the command.
 
 ## Security boundary
 
@@ -232,4 +279,7 @@ command.
 | `not_evaluated` | Setup or workspace preparation failed; inspect the setup logs and `metadata.json`. |
 | `runs show` reports "experiment not found" | You are reading a different store. Use the `--data-dir` value printed by the run, or pass the same `--config`. |
 | Workspace missing after a failure | Check `retention.workspace`; the default keeps failed workspaces. |
+| `agent "iris" is unavailable` | The `iris` executable is not on `PATH`. Install it or set `[adapters.iris.options] command`. |
+| Iris fails with a model or connection error | Check `base_url` and that the endpoint is running. A fresh Iris home has no default model: set `model` or pass `--model`. |
+| Iris shell tool calls are denied | Headless Iris fails closed without an allowlist or approval hook. Configure `[security.shell]` in the `settings_file` copy. |
 | Runs are slower than expected | Duration includes workspace clone, setup, agent, and evaluation. The bundled task compiles the fixture in setup and in the evaluator. |

@@ -13,11 +13,13 @@ model configuration, execution environment — not just the underlying model.
 > **Status: early.** This repository implements the vertical slice described in
 > [§17 of the implementation plan](docs/gauge-implementation-plan.md): task and
 > suite contracts, a pinned-fixture workspace, the runner, an independent
-> evaluator, a deterministic fake adapter, storage, reports, and a CLI. The Iris
-> and Pi adapters, SQLite persistence, experiment comparison, the full task
-> catalog, and the Docker backend are the next phases. See the
+> evaluator, a deterministic fake adapter, storage, reports, and a CLI. It also
+> includes the built-in Iris adapter (`iris jsonl`). The Pi adapter, SQLite
+> persistence, experiment comparison, the full task catalog, and the Docker
+> backend are the next phases. See the
 > [implementation tracker](docs/implementation-status.md) for per-phase status,
-> [docs/adapters.md](docs/adapters.md) for integration feasibility, and
+> [docs/adapters.md](docs/adapters.md) for the adapter contract and Iris
+> configuration, and
 > [docs/adr/0001-vertical-slice.md](docs/adr/0001-vertical-slice.md) for the
 > decisions made in this slice.
 
@@ -50,6 +52,12 @@ lifecycle: fresh pinned workspace → agent execution → diff capture → indep
 evaluation → persistence → report. Running the same command is how the core test
 suite proves the lifecycle works without a live model.
 
+To run the same suite against Iris, point a config at the `iris` binary and a
+running OpenAI-compatible endpoint; the per-attempt Iris home is isolated, so the
+model and any shell policy come from `[adapters.iris.options]` (see
+[Adapters](docs/adapters.md#iris-implemented) and
+[Running benchmarks](docs/running-benchmarks.md)).
+
 ## What works today
 
 | Area | Status |
@@ -64,7 +72,7 @@ suite proves the lifecycle works without a live model.
 | File-based experiment store, `runs list/show`, `inspect`, `export` | Implemented (SQLite is next) |
 | Markdown/JSON reports with explicit denominators | Implemented |
 | Deterministic fake adapter for tests | Implemented |
-| Iris adapter | Next phase; feasibility documented |
+| Iris adapter (`iris jsonl`) with normalized events, usage, and model discovery | Implemented |
 | Pi adapter | Next phase; feasibility documented |
 | Experiment comparison (`gauge compare`) | Planned |
 | Docker execution backend | Planned |
@@ -91,6 +99,7 @@ cmd/gauge/                 CLI entry point
 internal/
   adapter/                 Adapter contract and registry
   adapters/fake/           Deterministic test adapter
+  adapters/iris/           Iris adapter (iris jsonl subprocess)
   cli/                     Cobra commands
   config/                  TOML configuration and path resolution
   evaluator/               Evaluator contract and invocation
@@ -118,7 +127,7 @@ docs/                      Design and usage documentation
   deviations, and next actions.
 - [Architecture](docs/architecture.md) — components, lifecycle, storage model.
 - [Task format](docs/task-format.md) — task/suite/evaluator contracts.
-- [Adapters](docs/adapters.md) — adapter contract, fake adapter, Iris/Pi feasibility.
+- [Adapters](docs/adapters.md) — adapter contract, fake and Iris adapters, Pi plan.
 - [Metrics](docs/metrics.md) — outcome model, denominators, availability rules.
 - [Running benchmarks](docs/running-benchmarks.md) — configuration, commands,
   retention, inspection, security notes.

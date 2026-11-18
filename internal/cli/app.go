@@ -15,6 +15,7 @@ import (
 
 	"github.com/m4ns0ur/gauge/internal/adapter"
 	"github.com/m4ns0ur/gauge/internal/adapters/fake"
+	"github.com/m4ns0ur/gauge/internal/adapters/iris"
 	"github.com/m4ns0ur/gauge/internal/config"
 	"github.com/m4ns0ur/gauge/internal/storage"
 	"github.com/m4ns0ur/gauge/internal/suite"
@@ -183,6 +184,7 @@ func (a *App) loadConfig() (*config.Config, error) {
 func (a *App) registry() *adapter.Registry {
 	reg := adapter.NewRegistry()
 	reg.Register(fake.New())
+	reg.Register(iris.New())
 	return reg
 }
 
@@ -240,6 +242,10 @@ func (a *App) adapterConfig(cfg *config.Config, id string) (adapter.Adapter, jso
 		return nil, nil, Exitf(ExitUsage, "%v", err)
 	}
 	if err := impl.Validate(a.ctx(), options); err != nil {
+		var unavailable *adapter.UnavailableError
+		if errors.As(err, &unavailable) {
+			return nil, nil, Exitf(ExitUsage, "%v", err)
+		}
 		return nil, nil, Exitf(ExitUsage, "agent %q configuration is invalid: %v", id, err)
 	}
 	return impl, options, nil

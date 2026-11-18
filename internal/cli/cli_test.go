@@ -4,13 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/m4ns0ur/gauge/internal/adapter"
 	"github.com/m4ns0ur/gauge/internal/cli"
 	"github.com/m4ns0ur/gauge/internal/storage"
 	"github.com/m4ns0ur/gauge/internal/testutil"
@@ -229,6 +232,87 @@ func TestRunInspectExportLifecycle(t *testing.T) {
 	}
 }
 
+// TestRunWithIrisStub proves the Iris adapter satisfies the same attempt
+// lifecycle as the fake adapter: a real subprocess, normalized events, captured
+// raw output, and an independent evaluator verdict. The stub replaces the agent
+// executable, so no model or network access is needed.
+func TestRunWithIrisStub(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent executables require a POSIX shell")
+	}
+	bench, _ := newBench(t)
+
+	stub := filepath.Join(t.TempDir(), "iris-stub")
+	testutil.WriteFile(t, stub, `#!/bin/sh
+cat > /dev/null
+printf 42 > answer.txt
+printf '%s\n' '{"type":"agent.started","event":{}}'
+printf '%s\n' '{"type":"assistant.delta","event":{"text":"wrote answer.txt"}}'
+printf '%s\n' '{"type":"agent.turn.finished","event":{"turn":1}}'
+printf '%s\n' '{"type":"tool.started","event":{"tool_call_id":"call-1","tool_name":"write","args":{"path":"answer.txt"}}}'
+printf '%s\n' '{"type":"tool.completed","event":{"tool_call_id":"call-1","tool_name":"write","result":{"bytes":2}}}'
+printf '%s\n' '{"type":"usage","event":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}'
+printf '%s\n' '{"type":"agent.finished","event":{"summary":{"duration_ms":1,"llm_requests":1,"tool_executions":1,"usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}}}'
+printf '%s\n' '{"type":"result","event":{"content":"wrote answer.txt","usage":{"prompt_tokens":10,"completion_tokens":5,"total_tokens":15}}}'
+`, 0o755)
+	bench.WriteConfig(fmt.Sprintf(`
+[adapters.iris.options]
+command = %q
+`, stub))
+
+	stdout, stderr, err := execCLI(t, bench, "run", "--suite", "smoke", "--agent", "iris")
+	if err != nil {
+		t.Fatalf("run: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Passed: 1/1 (100.0%)") {
+		t.Errorf("run output:\n%s", stdout)
+	}
+
+	expID := extractExperimentID(t, stdout)
+	store, err := storage.New(bench.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempts, err := store.ListAttempts(expID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("attempts = %d", len(attempts))
+	}
+	attempt := attempts[0]
+	if attempt.AgentID != "iris" {
+		t.Errorf("agent = %q", attempt.AgentID)
+	}
+	if attempt.Execution.Completion != adapter.Completed {
+		t.Errorf("execution = %+v", attempt.Execution)
+	}
+	if attempt.Usage == nil || attempt.Usage.TotalTokens == nil || *attempt.Usage.TotalTokens != 15 {
+		t.Errorf("usage = %+v", attempt.Usage)
+	}
+	if attempt.Outcome != storage.OutcomePassed {
+		t.Errorf("outcome = %s", attempt.Outcome)
+	}
+
+	dir, err := store.AttemptDir(expID, attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := attempt.Artifacts["stdout.log"]; !ok {
+		t.Errorf("stdout.log is not recorded: %+v", attempt.Artifacts)
+	}
+	raw := testutil.ReadFile(t, filepath.Join(dir, "stdout.log"))
+	if !strings.Contains(raw, `"type":"result"`) {
+		t.Errorf("stdout.log does not contain the raw stream:\n%s", raw)
+	}
+	eventsLog := testutil.ReadFile(t, filepath.Join(dir, "events.jsonl"))
+	for _, want := range []string{`"type":"agent.message"`, `"type":"tool.call"`, `"source":"iris"`} {
+		if !strings.Contains(eventsLog, want) {
+			t.Errorf("events.jsonl missing %s:\n%s", want, eventsLog)
+		}
+	}
+}
+
 func TestRunRepetitions(t *testing.T) {
 	bench, _ := newBench(t)
 	stdout, _, err := execCLI(t, bench, "run", "--task", "write-answer", "--agent", "fake", "--repetitions", "2", "--notes", "repetition test")
@@ -386,7 +470,7 @@ func TestDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, stdout)
 	}
-	for _, want := range []string{"config", "data", "tasks", "suites", "git", "agent:fake", "sandbox"} {
+	for _, want := range []string{"config", "data", "tasks", "suites", "git", "agent:fake", "agent:iris", "sandbox"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("doctor output missing %q:\n%s", want, stdout)
 		}
@@ -413,6 +497,36 @@ func TestAgentsList(t *testing.T) {
 	}
 	if !strings.Contains(stdout, "fake") || !strings.Contains(stdout, "valid") {
 		t.Errorf("agents list:\n%s", stdout)
+	}
+	if !strings.Contains(stdout, "iris") {
+		t.Errorf("agents list does not mention the built-in Iris adapter:\n%s", stdout)
+	}
+
+	stdout, _, err = execCLI(t, bench, "agents", "list", "--json")
+	if err != nil {
+		t.Fatalf("agents list --json: %v", err)
+	}
+	var rows []struct {
+		ID     string `json:"id"`
+		Status string `json:"config_status"`
+	}
+	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
+		t.Fatalf("parse agents JSON: %v\n%s", err, stdout)
+	}
+	found := false
+	for _, row := range rows {
+		if row.ID != "iris" {
+			continue
+		}
+		found = true
+		// Iris may or may not be installed on the machine running the tests;
+		// a missing executable is "unavailable", never a config error.
+		if row.Status != "valid" && row.Status != "unavailable" {
+			t.Errorf("iris config status = %q", row.Status)
+		}
+	}
+	if !found {
+		t.Error("iris adapter is not registered")
 	}
 }
 

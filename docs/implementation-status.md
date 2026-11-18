@@ -3,7 +3,9 @@
 Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 
 - **Last updated:** 2026-11-18
-- **Verified with:** `make check` (gofmt, vet, build, tests) and `make run-smoke`
+- **Verified with:** `make check` (gofmt, vet, build, tests) and `make run-smoke`;
+  the Iris adapter was also exercised against the locally installed `iris` binary
+  (JSONL stream, error path, model discovery from the session header).
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -17,7 +19,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 2 — Task and suite discovery | **Done** | Loaders, `tasks list/show`, `suites list/show`, bundled fixture/task/evaluator/smoke suite. |
 | 3 — Workspace and local runner | **Done** | Fresh pinned clones, setup, hard timeouts, process-group kill, diff capture, retention, coordinator, fake end-to-end tests. |
 | 4 — Independent evaluation | **Done** | Separate evaluator process, versioned JSON, timeouts, infra-vs-task failure split, artifact capture, tests. |
-| 5 — Iris and Pi adapters | **Not started** | Feasibility and recommended strategies documented; only `fake` is built in. |
+| 5 — Iris and Pi adapters | **Partial** | Iris is built in (`iris jsonl`): subprocess isolation, event mapping, usage/model discovery, settings copy, stub tests. Pi remains. |
 | 6 — SQLite persistence and inspection | **Partial** | File store, `runs list/show`, `inspect`, JSON/Markdown export work; SQLite and migrations do not exist. |
 | 7 — Comparison and metrics reporting | **Partial** | Aggregates, per-task/category, availability rules, repetitions, reports done; `compare` and tool-call aggregation missing. |
 | 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
@@ -84,13 +86,39 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - Candidate diffs are captured before evaluation; evaluator scratch and caches are
   cleaned unless `keep_all` ([internal/evaluator](../internal/evaluator/invoke.go)).
 
-### Phase 5 — Iris and Pi adapters: Not started
+### Phase 5 — Iris and Pi adapters: Partial
 
-- Recon and strategies are complete and accurate as of the inspected local
-  versions (Iris commit `d1af31d`; Pi 1.5.2).
-- Next: implement `iris jsonl` and `pi --mode json --no-session` adapters with
-  stub-stream tests, plus one opt-in live integration test. No contract changes are
-  expected.
+**Works now**
+
+- `internal/adapters/iris` runs `iris jsonl` once per attempt with a fresh
+  `--home`, the workspace as `--workdir`, the prompt on stdin, and optional
+  `--model`, `--base-url`, and `--debug`
+  ([internal/adapters/iris](../internal/adapters/iris/iris.go)).
+- The typed event stream is translated to normalized events (messages, tool
+  calls/results, usage, errors, lifecycle) and unknown records are counted rather
+  than invented. Raw stdout/stderr are kept as artifacts
+  ([stream.go](../internal/adapters/iris/stream.go)).
+- Completion is derived from the process exit code plus the `result`, `error`,
+  and `agent.finished` records; timeouts and cancellation map to distinct
+  outcomes. Usage and model/provider are recorded only from the stream/session
+  header, and agent version is reported as unavailable because Iris has no
+  version flag.
+- `settings_file` copies an Iris settings file into the per-attempt home, so
+  security policy and model settings are explicit and isolated; the home is
+  removed as scratch unless retention is `keep_all`.
+- Tests cover recorded-stream translation and stub-executable runs, and a CLI test
+  runs the smoke suite through the Iris adapter end to end. `gauge agents list`
+  shows the adapter and `gauge doctor` checks for the binary without failing when
+  it is absent (`adapter.UnavailableError`).
+
+**Remaining**
+
+- Pi adapter (`pi --mode json --no-session`), following the same pattern.
+- An opt-in live integration test against a local model endpoint. A live run was
+  verified manually, but there is no automated end-to-end check that needs a
+  model.
+- Provider-reported cost and agent version remain unavailable; do not fabricate
+  them.
 
 ### Phase 6 — SQLite persistence and inspection: Partial
 
@@ -174,8 +202,8 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 |---|---|
 | 1. Install/run as a standalone CLI | **Done** — `make build` builds and installs. |
 | 2. List and validate agent-neutral tasks/suites | **Done**. |
-| 3. Configure Iris and Pi via public interfaces | **Not started** — fake only. |
-| 4. Run the same suite against either agent with pinned fixtures | **Partial** — runner/workspace/evaluator proven; adapters missing. |
+| 3. Configure Iris and Pi via public interfaces | **Partial** — Iris via TOML (`command`, `model`, `base_url`, `settings_file`); Pi not implemented. |
+| 4. Run the same suite against either agent with pinned fixtures | **Partial** — Iris runs the smoke suite (stub and manual live check); Pi pending. |
 | 5. Enforce per-attempt and evaluator timeouts | **Done**. |
 | 6. Evaluate independently with hidden checks | **Done**. |
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
@@ -193,14 +221,15 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md):
 | Fixtures | Bare repositories plus readable sources and `scripts/fixture.sh`. |
 | Suites | Single YAML files rather than directories. |
 | Evaluator | Positional args + `GAUGE_*` env, strict JSON, candidate failures exit 0. |
-| Adapters | Fake is built in; Iris/Pi deferred. |
+| Adapters | `fake` and `iris` are built in; `pi` is deferred. |
 | Isolation | Local only; `execution.network` is declarative, not enforced. |
 | Diff capture | Temporary index so the candidate's index and worktree are untouched. |
 
 ## Next actions, in order
 
-1. Implement the Iris adapter (`iris jsonl`) and its stub-stream tests.
-2. Implement the Pi adapter (`pi --mode json --no-session`) and its tests.
+1. Implement the Pi adapter (`pi --mode json --no-session`) and its tests.
+2. Add an opt-in live integration test for Iris (and then Pi), gated by explicit
+   environment configuration for a local model endpoint.
 3. Add SQLite storage and migrations behind the existing operations.
 4. Add `gauge compare` with revision guards and difference reporting.
 5. Grow the task catalog and add `coding`, `repository`, and `full` suites.

@@ -35,6 +35,29 @@ type Adapter interface {
 	Run(ctx context.Context, request RunRequest, emit func(events.Event)) (RunResult, error)
 }
 
+// UnavailableError reports that an adapter is configured correctly but cannot
+// run on this machine because an external dependency (usually the agent
+// executable) is missing. It is distinct from a configuration error: Gauge
+// reports it as a warning in `gauge doctor`, lists the adapter as unavailable,
+// and refuses to start a run instead of recording a misleading task failure.
+type UnavailableError struct {
+	// Adapter is the adapter identifier.
+	Adapter string
+	// Err explains what is missing and how to fix it.
+	Err error
+}
+
+// Error implements error.
+func (e *UnavailableError) Error() string {
+	if e.Err == nil {
+		return fmt.Sprintf("adapter %q is unavailable", e.Adapter)
+	}
+	return fmt.Sprintf("adapter %q is unavailable: %v", e.Adapter, e.Err)
+}
+
+// Unwrap exposes the underlying cause.
+func (e *UnavailableError) Unwrap() error { return e.Err }
+
 // Describer is an optional interface for human-readable adapter metadata.
 type Describer interface {
 	Description() string

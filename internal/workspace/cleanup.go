@@ -17,6 +17,7 @@ var attemptScratchDirs = []string{
 	"setup-tmp",
 	"agent-home",
 	"agent-tmp",
+	"iris-home",
 }
 
 // CleanScratch removes tool caches, agent home directories, and the evaluator

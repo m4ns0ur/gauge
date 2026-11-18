@@ -1,0 +1,30 @@
+# Example Iris settings for Gauge runs.
+#
+# The Iris adapter copies this file into every attempt's isolated home
+# (<attempt>/iris-home/settings.toml) before `iris jsonl` starts, because Gauge
+# never reads or shares ~/.iris. CLI flags that Gauge passes (--model,
+# --base-url) take precedence over the values here.
+#
+# Reference: the Iris configuration documentation.
+
+base_url = "http://127.0.0.1:8080/v1"
+
+# Model sent with requests. Overridden by gauge's --model or
+# [adapters.iris.options] model. A fresh Iris home has no default model, so set
+# this (or one of the overrides) before running.
+default_model = "qwen3.6-35B-Q1"
+
+# Match the model's real context window so Iris can manage context correctly.
+# [[models]]
+# name = "qwen3.6-35B-Q1"
+# context_size = 65535
+# tool_calling = true
+
+# Headless Iris fails shell commands closed unless an allowlist, approval hook,
+# or custom approver is configured. Tasks that build or test code need some
+# policy. Review Iris's security documentation before granting shell access, and
+# remember that local Gauge execution is not a sandbox either.
+#
+# [security.shell]
+# mode = "allowlist"
+# allow = ["go", "git", "ls", "cat", "grep"]

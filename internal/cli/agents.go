@@ -1,10 +1,13 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
+
+	"github.com/m4ns0ur/gauge/internal/adapter"
 )
 
 type agentRow struct {
@@ -50,11 +53,18 @@ func (a *App) agentsListCommand() *cobra.Command {
 					row.ConfigStatus = "invalid"
 					row.ConfigError = optErr.Error()
 				default:
-					if validateErr := impl.Validate(a.ctx(), options); validateErr != nil {
+					validateErr := impl.Validate(a.ctx(), options)
+					var unavailable *adapter.UnavailableError
+					switch {
+					case validateErr == nil:
+						row.ConfigStatus = "valid"
+					case errors.As(validateErr, &unavailable):
+						// Valid configuration, missing external agent.
+						row.ConfigStatus = "unavailable"
+						row.ConfigError = validateErr.Error()
+					default:
 						row.ConfigStatus = "invalid"
 						row.ConfigError = validateErr.Error()
-					} else {
-						row.ConfigStatus = "valid"
 					}
 				}
 				rows = append(rows, row)

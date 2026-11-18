@@ -76,10 +76,11 @@ are reported alongside task outcomes so a faster or cheaper configuration is not
 mistaken for a better one.
 
 The event vocabulary records tool calls, tool results, and warnings when an adapter
-exposes them. Behavioral aggregation (repeated failed actions, whether tests were
-run, whether the repository was inspected) is diagnostic and not part of the task
-score. It is planned after the Iris/Pi adapters can supply real event streams;
-Gauge does not fabricate those signals for agents that do not expose them.
+exposes them; the Iris adapter does, `fake` emits canned events, and Pi is not
+implemented yet. Behavioral aggregation (repeated failed actions, whether tests
+were run, whether the repository was inspected) is diagnostic and not part of the
+task score. It is planned on top of the stored event streams; Gauge does not
+fabricate those signals for agents that do not expose them.
 
 ## Comparing experiments
 

@@ -17,6 +17,12 @@ type Adapter interface {
 Adapters are built in and registered at startup (`internal/cli`). Gauge does not
 load adapter code dynamically and has no plugin marketplace.
 
+`Validate` returns a normal error for invalid configuration and an
+`adapter.UnavailableError` when the configuration is fine but the agent
+executable is missing. Gauge lists the adapter as `unavailable` in
+`gauge agents list`, warns instead of failing in `gauge doctor`, and refuses to
+start a run rather than recording a misleading task failure.
+
 ### `RunRequest`
 
 | Field | Meaning |
@@ -124,73 +130,119 @@ It can also emit canned events (`events = [{ type = "agent.message", text = "…
 which lets tests prove that an agent's claim of success does not affect the
 evaluator's verdict.
 
-## Iris feasibility
+## Iris (implemented)
 
-Observed on this machine (2026-11-18) from the local Iris checkout at commit
-`d1af31d` and the installed binary. Re-verify before implementing, as the project
-is under active development.
+`internal/adapters/iris` drives the installed `iris` binary through its
+documented one-shot JSONL interface. It was implemented against Iris commit
+`d1af31d` (verified 2026-11-18) and depends only on that public CLI and the
+stream schema described in Iris's own CLI documentation.
 
-### Supported public interface
+### Invocation
 
-- One-shot JSONL: `iris jsonl "<prompt>"` (prompt may come from stdin).
-  `iris print` returns only the final text; `iris rpc` serves JSON-RPC 2.0 over
-  stdin/stdout.
-- Global flags: `-w/--workdir` (must exist; defaults to cwd), `-m/--model`,
-  `-b/--base-url`, `--home` (agent state directory), `-d/--debug`.
-- Events are NDJSON lines of the form `{"type":"<event>","event":{…}}`, e.g.:
-
-```json
-{"type":"assistant.delta","event":{"at":"…","text":"Hello"}}
-{"type":"usage","event":{"at":"…","prompt_tokens":11,"completion_tokens":3,"total_tokens":14}}
-{"type":"agent.finished","event":{"at":"…","summary":{"duration_ms":14,"llm_requests":1,"tool_executions":0,"usage":{…}}}}
-{"type":"result","event":{"content":"…","session_id":"…","usage":{…},"summary":{…}}}
+```text
+iris jsonl --home <attempt>/iris-home --workdir <attempt>/workspace \
+           [--model <m>] [--base-url <u>] [--debug]     # prompt arrives on stdin
 ```
 
-- Event names include `agent.started`, `agent.turn.started`,
-  `llm.request.started`, `llm.response.started`, `assistant.delta`,
-  `reasoning.delta`, `tool.started`, `tool.progress`, `tool.completed`,
-  `tool.failed`, `usage`, `agent.turn.finished`, `agent.turn.retried`,
-  `context.compaction.started/finished`, `agent.error`, and `agent.finished`.
-  A successful run ends with `agent.finished` then a final `result`. On failure an
-  additional `{"type":"error", …}` follows and the process exits non-zero.
-- Tool telemetry: `tool.started` carries `tool_call_id`, `tool_name`, and `args`;
-  `tool.completed` carries the result and duration.
-- Cancellation: Iris installs a SIGINT/SIGTERM context; partial events are flushed
-  and the run exits non-zero.
+- The prompt is written to stdin, so it never appears in the process list and is
+  not subject to argument-size limits.
+- `--home` is always a fresh directory inside the attempt directory. Iris
+  persists settings, sessions, and logs under its home; a shared home would let
+  attempts observe each other. The directory is removed as scratch after the
+  attempt unless retention is `keep_all`.
+- The process runs with the controlled environment from `RunRequest`, its
+  working directory set to the workspace, and Gauge's process-group supervision.
+  A timeout or cancellation kills the whole group.
+- Raw JSONL is written to `stdout.log`; diagnostics go to `stderr.log`.
 
-### Gaps and caveats
+### Configuration
 
-- No `--version` flag or `version` subcommand. Version is only discoverable via
-  `go version -m <binary>` (`mod github.com/m4ns0ur/iris <pseudo-version>`).
-- The model/provider is not in the event stream; it is recorded in the session file
-  header under `--home`.
-- No per-run timeout flag; Gauge must enforce it.
-- State always lands under the Iris home directory (`~/.iris` by default):
-  settings, sessions, logs. A fresh `--home` per attempt is required for isolation;
-  session persistence cannot be disabled.
-- `iris rpc` exits 0 even when the run failed, and stdin EOF cancels the active
-  run. `iris jsonl` is the better one-shot interface.
-- Headless shell commands fail closed unless configured; that is Iris behavior, not
-  something Gauge should patch around.
+```toml
+[adapters.iris]
+enabled = true
 
-### Recommended adapter strategy
+[adapters.iris.options]
+command = "iris"                               # executable name or path
+model = "qwen3.6-35B-Q1"                       # optional; a run's --model wins
+base_url = "http://127.0.0.1:8080/v1"          # optional; passed as --base-url
+settings_file = "examples/iris-settings.toml"  # optional; see below
+debug = false                                  # passes --debug
+```
 
-Run `iris jsonl` once per attempt as a subprocess:
+`settings_file` is copied to `<attempt>/iris-home/settings.toml` before the run.
+It is how an attempt gets Iris security policy, model settings, and context
+limits: Gauge never reads or shares the user's `~/.iris`, so nothing from that
+directory applies. Iris gives its CLI flags precedence, so `model` and `base_url`
+override the matching keys in the file. A relative path resolves against Gauge's
+working directory (like `command`), not against the config file, so scripts
+should use an absolute path. [examples/iris-settings.toml](../examples/iris-settings.toml)
+is a starting point.
 
-- `--home <attempt>/iris-home`, `--workdir <attempt>/workspace`,
-  `--model` / `--base-url` when configured;
-- stream stdout line by line, map typed events to Gauge events;
-- treat success as: exit 0, a `result` record present, and no `error` record;
-- capture raw stdout to `stdout.log`;
-- read model/provider (if needed) from the session header under the isolated home;
-- report agent version as unknown unless a supported discovery mechanism exists.
+> **Model and security are not inherited from `~/.iris`.** A fresh Iris home has
+> no `default_model`, and its shell policy defaults to `approval`, which fails
+> closed in headless mode. Set `model` (or `--model`), and use `settings_file`
+> when a task needs shell commands, an allowlist, or a larger context window.
 
-Telemetry available: token usage per turn and aggregate, LLM request count, tool
-execution count, durations, per-tool args/results/duration, compaction events,
-session ID. Unavailable: agent version, in-stream model/provider, cost, reliable
-exit-code success for RPC.
+### Event mapping
 
-## Pi feasibility
+| Iris record | Gauge event |
+|---|---|
+| `agent.started` | lifecycle `agent_started` (emitted by the adapter once the process starts) |
+| `assistant.delta` | buffered and emitted as one `agent.message` per turn |
+| `agent.turn.started` / `agent.turn.finished` | `agent.state` (`turn_started`, `turn_finished`) |
+| `agent.turn.retried` | `warning`; buffered assistant text is discarded |
+| `tool.started` | `tool.call` (call ID, tool name, arguments) |
+| `tool.completed` | `tool.result` (output, failure flag) |
+| `tool.failed` | `tool.result` with `failed: true` |
+| `usage` | `usage` (input = prompt tokens, output = completion tokens) |
+| `context.compaction.started` / `.finished` | `agent.state` |
+| `agent.error` | `error` |
+| `agent.finished` | lifecycle `agent_settled`; its summary becomes adapter metadata |
+| `result` | terminal result: session ID, usage, truncation |
+| `error` | terminal failure |
+| `reasoning.delta`, `tool.progress`, `llm.*`, `agent.queue.*`, `agent.instruction.*` | omitted; raw output remains in `stdout.log` |
+
+Tool inputs and outputs are truncated in normalized events (4 KiB and 8 KiB); the
+complete payloads stay in `stdout.log`. Unknown record types are counted in
+metadata rather than fabricated into events.
+
+### Outcome
+
+A run is `completed` only when the process exits 0, a `result` record is
+present, and no `error` record, `agent.error`, or reported cancellation is
+present. A non-zero exit, a missing result, or a reported error is `failed`; a
+deadline is `timed_out`; an interrupt through Gauge is `cancelled`. The adapter
+never decides whether the task passed.
+
+### Telemetry and artifacts
+
+- `stdout.log` — the raw JSONL stream, unchanged.
+- `stderr.log` — Iris diagnostics, including startup failures that produce no
+  JSON records at all.
+- `result.Metadata` — command, session ID, record counts, unrecognized event
+  types, LLM request count, tool executions, and working-tree change count.
+- Usage — Iris's run summary when available (it includes compaction and retries),
+  otherwise the result record, otherwise the sum of per-call usage events.
+  Missing usage stays unavailable.
+- Model/provider — neither appears in the event stream. The adapter reads the
+  session header from the isolated home and records `model` plus
+  `model_metadata.provider` and `model_metadata.base_url`. A configured or
+  requested `--model` is the fallback when no session header exists.
+- Agent version — unavailable: Iris has no supported version flag. Gauge reports
+  no version rather than guessing from the binary.
+
+### Known limitations
+
+- Iris writes a session file per run, but the isolated home is deleted as
+  scratch, so session transcripts are not kept as attempt artifacts.
+- Headless shell commands need an allowlist or approval hook; that is Iris
+  policy, and Gauge does not patch around it.
+- `iris rpc` is not used: it exits 0 on failed runs and treats stdin EOF as
+  cancellation, so `jsonl` is the better one-shot interface.
+- A run that fails before the model responds has no usage and usually no model
+  information; those fields are reported as unavailable.
+
+## Pi feasibility (next)
 
 Observed from the installed `@earendil-works/pi-coding-agent` 1.5.2 package and
 its documented JSON mode.
@@ -262,17 +314,26 @@ session ID, retry/compaction events. Unavailable/reconstructable-only: run-level
 duration, tool counters, git diff summary, reliable run-outcome exit codes, a
 base-URL CLI override.
 
-## Adapter testing strategy (next phase)
+## Adapter testing
 
-- Unit-test event translation against recorded sample streams (no live model).
-- Use stub executables (or a fake HTTP server) to test invocation, flags, working
-  directory, and process termination.
-- Keep the standard test suite independent of installed agents and inference.
-- Add an opt-in integration test gated by explicit environment configuration for a
-  local model endpoint.
-- Document any upstream gap as a separate optional request; do not patch Iris or Pi
-  inside Gauge.
+- `internal/adapters/iris` unit tests feed recorded JSONL streams through the
+  translator: a successful run, a retried turn, partial output before a timeout,
+  unknown and malformed records, and usage precedence. They need no agent and no
+  network.
+- Stub executables exercise the real subprocess path: argv, prompt on stdin,
+  working directory, raw stdout capture, session-header discovery, settings-file
+  copying, non-zero exit, missing executable, timeout, and cancellation. These
+  tests skip on Windows, which has no POSIX shell.
+- The CLI test suite runs the smoke suite end-to-end with an Iris stub, proving
+  that the adapter satisfies the same runner/evaluator/storage lifecycle as
+  `fake`.
+- A live run against a local model endpoint is manual for now: point
+  `[adapters.iris.options] settings_file` at an Iris settings file (for the model
+  and shell policy) and run the smoke suite. The standard test suite never calls
+  a model or the network.
+- Pi will follow the same pattern once it is implemented: recorded streams plus a
+  stub executable, with any live check kept opt-in.
 
-Both adapters are expected to satisfy the existing contract without private imports
-or source changes. Neither is implemented in this build; `gauge agents list` shows
-only `fake` until the next phase.
+Both adapters are expected to satisfy the existing contract without private
+imports or source changes. Iris is implemented; Pi remains a documented plan and
+does not appear in `gauge agents list` yet.

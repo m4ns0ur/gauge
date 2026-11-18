@@ -1,15 +1,16 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
 
+	"github.com/m4ns0ur/gauge/internal/adapter"
 	"github.com/m4ns0ur/gauge/internal/config"
 )
 
@@ -134,16 +135,18 @@ func (a *App) runDoctor() []doctorCheck {
 			continue
 		}
 		if err := impl.Validate(ctx, options); err != nil {
-			add("agent:"+info.ID, "fail", err.Error())
+			var unavailable *adapter.UnavailableError
+			if errors.As(err, &unavailable) {
+				// A correctly configured adapter whose agent is not installed
+				// must not fail the whole environment check.
+				add("agent:"+info.ID, "warn", err.Error())
+			} else {
+				add("agent:"+info.ID, "fail", err.Error())
+			}
 			continue
 		}
-		detail := "configured"
-		if version := detectAdapterVersion(info.ID); version != "" {
-			detail = version
-		}
-		add("agent:"+info.ID, "ok", detail)
+		add("agent:"+info.ID, "ok", "configured")
 	}
-	add("agent:iris", "warn", "not implemented in this build; see docs/adapters.md")
 	add("agent:pi", "warn", "not implemented in this build; see docs/adapters.md")
 	add("sandbox", "warn", "local execution is not a security sandbox; tasks and evaluators are trusted code")
 	return checks
@@ -160,26 +163,4 @@ func probeWritable(dir string) error {
 	name := f.Name()
 	f.Close()
 	return os.Remove(name)
-}
-
-// detectAdapterVersion reports a locally installed agent version when the
-// public CLI supports it. This is informational only.
-func detectAdapterVersion(id string) string {
-	paths := map[string][]string{
-		"iris": {"iris", "--version"},
-		"pi":   {"pi", "--version"},
-	}
-	argv, ok := paths[id]
-	if !ok {
-		return ""
-	}
-	bin, err := exec.LookPath(argv[0])
-	if err != nil {
-		return "adapter not implemented; agent binary not found"
-	}
-	out, err := exec.Command(bin, argv[1:]...).Output()
-	if err != nil {
-		return "adapter not implemented; installed at " + bin
-	}
-	return fmt.Sprintf("adapter not implemented; installed: %s %s", filepath.Base(bin), strings.TrimSpace(string(out)))
 }

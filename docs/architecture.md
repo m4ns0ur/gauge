@@ -34,9 +34,9 @@ Adapters are built in and registered at startup.
              |      +---------+----------+
              |      |         |          |
              |  workspace  adapter   evaluator
-             |  (fresh    (fake;    (after agent,
-             |   clone)    Iris/Pi    outside process)
-             |            planned)
+             |  (fresh    (fake,    (after agent,
+             |   clone)    Iris, Pi  outside process)
+             |             planned)
              +----------------+-----------------+
                               |
                  artifacts + metrics + reports
@@ -106,8 +106,9 @@ metrics preserve both. See [metrics.md](metrics.md).
 - **Task** — immutable benchmark content: prompt, pinned fixture, execution
   constraints, evaluator. See [task-format.md](task-format.md).
 - **Adapter** — one small interface with `ID`, `Validate`, and `Run`; returns a
-  process-level result and normalized events, never a pass/fail score. See
-  [adapters.md](adapters.md).
+  process-level result and normalized events, never a pass/fail score. Validation
+  distinguishes invalid configuration from a missing agent binary
+  (`adapter.UnavailableError`). See [adapters.md](adapters.md).
 - **Evaluator** — a subprocess invoked with workspace, assets, and scratch paths;
   returns versioned JSON with individual checks. A non-zero exit, timeout, or
   invalid JSON is an evaluator error.
@@ -142,9 +143,10 @@ live in the metadata document. Timestamps are UTC RFC 3339.
 
 Retention policies: `keep_failed` (default; delete the workspace after a passing
 evaluation), `keep_all`, and `delete_all`. Logs, diffs, events, and evaluation
-output are never deleted with the workspace. Tool caches and the evaluator scratch
-directory are removed after every attempt unless `keep_all` is selected; they are
-not benchmark evidence and can be very large.
+output are never deleted with the workspace. Tool caches, isolated agent home
+directories (`agent-home/`, `iris-home/`), and the evaluator scratch directory are
+removed after every attempt unless `keep_all` is selected; they are not benchmark
+evidence and can be very large.
 
 ## Reproducibility
 
@@ -169,8 +171,8 @@ cannot observe token usage leaves it absent, and reports say `unavailable`.
   Docker backend can enforce mount and network isolation without changing task or
   adapter contracts. The `execution.network` field is currently declarative in the
   local backend.
-- **Iris and Pi adapters** implement the existing adapter contract; see
-  [adapters.md](adapters.md).
+- **The Pi adapter** implements the existing adapter contract the same way Iris
+  does; the Iris adapter is already built in. See [adapters.md](adapters.md).
 - **Comparison** builds on the persisted per-attempt records; it must refuse to
   compare experiments whose suite or task fingerprints differ.
 
