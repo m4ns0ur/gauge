@@ -1,7 +1,16 @@
+// Package storage persists experiment and attempt metadata in SQLite and keeps
+// large artifacts as files under the data directory.
+//
+// The metadata database is <data_dir>/gauge.db; events, logs, diffs, and
+// evaluator output remain files under <data_dir>/runs/<experiment>/<attempt>/.
+// SQLite stores their paths and SHA-256 hashes, plus normalized evaluator checks
+// and typed metric rows with provenance. Schema changes are versioned migrations
+// applied when the store is opened.
 package storage
 
 import (
 	"crypto/sha256"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -9,7 +18,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -28,11 +36,15 @@ var (
 
 // Store reads and writes experiment data under a data directory.
 type Store struct {
-	root    string
-	runsDir string
+	root     string
+	runsDir  string
+	db       *sql.DB
+	warnings []string
 }
 
-// New opens (creating if needed) a store rooted at dataDir.
+// New opens (creating if needed) a store rooted at dataDir. It creates the data
+// directory, the artifact directory tree, the SQLite database, and any pending
+// schema migrations. Call Close when finished.
 func New(dataDir string) (*Store, error) {
 	if strings.TrimSpace(dataDir) == "" {
 		return nil, fmt.Errorf("storage: data directory is required")
@@ -45,11 +57,30 @@ func New(dataDir string) (*Store, error) {
 	if err := os.MkdirAll(runs, 0o755); err != nil {
 		return nil, fmt.Errorf("storage: create %s: %w", runs, err)
 	}
-	return &Store{root: root, runsDir: runs}, nil
+	db, err := openDatabase(filepath.Join(root, databaseFile))
+	if err != nil {
+		return nil, err
+	}
+	store := &Store{root: root, runsDir: runs, db: db}
+	store.importLegacyFileStore()
+	return store, nil
+}
+
+// Close releases the database connection. It is safe to call more than once.
+func (s *Store) Close() error {
+	if s == nil || s.db == nil {
+		return nil
+	}
+	err := s.db.Close()
+	s.db = nil
+	return err
 }
 
 // Root returns the absolute data directory.
 func (s *Store) Root() string { return s.root }
+
+// DatabasePath returns the absolute path of the SQLite metadata database.
+func (s *Store) DatabasePath() string { return filepath.Join(s.root, databaseFile) }
 
 // ExperimentDir returns the directory for an experiment.
 func (s *Store) ExperimentDir(experimentID string) (string, error) {
@@ -71,7 +102,7 @@ func (s *Store) AttemptDir(experimentID, attemptID string) (string, error) {
 	return filepath.Join(expDir, attemptID), nil
 }
 
-// CreateExperiment creates the experiment directory and writes its metadata.
+// CreateExperiment creates the experiment record and its artifact directory.
 func (s *Store) CreateExperiment(exp *Experiment) error {
 	if exp == nil {
 		return fmt.Errorf("storage: experiment is nil")
@@ -79,21 +110,37 @@ func (s *Store) CreateExperiment(exp *Experiment) error {
 	if err := validateExperiment(exp); err != nil {
 		return err
 	}
+	exists, err := experimentExists(s.db, exp.ID)
+	if err != nil {
+		return err
+	}
+	if exists {
+		return fmt.Errorf("storage: experiment %q already exists", exp.ID)
+	}
 	dir, err := s.ExperimentDir(exp.ID)
 	if err != nil {
 		return err
 	}
 	if _, statErr := os.Stat(dir); statErr == nil {
-		return fmt.Errorf("storage: experiment %q already exists", exp.ID)
+		return fmt.Errorf("storage: experiment directory %q already exists", dir)
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return fmt.Errorf("storage: inspect experiment directory: %w", statErr)
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("storage: create experiment directory: %w", err)
 	}
 	exp.SchemaVersion = SchemaVersion
-	return s.SaveExperiment(exp)
+	args, err := experimentArgs(exp)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(upsertExperimentSQL, args...); err != nil {
+		return fmt.Errorf("storage: create experiment %q: %w", exp.ID, err)
+	}
+	return nil
 }
 
-// SaveExperiment atomically rewrites experiment metadata.
+// SaveExperiment writes or updates experiment metadata.
 func (s *Store) SaveExperiment(exp *Experiment) error {
 	if exp == nil {
 		return fmt.Errorf("storage: experiment is nil")
@@ -108,64 +155,64 @@ func (s *Store) SaveExperiment(exp *Experiment) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("storage: create experiment directory: %w", err)
 	}
-	if err := writeJSON(filepath.Join(dir, "experiment.json"), exp); err != nil {
+	args, err := experimentArgs(exp)
+	if err != nil {
 		return err
+	}
+	if _, err := s.db.Exec(upsertExperimentSQL, args...); err != nil {
+		return fmt.Errorf("storage: save experiment %q: %w", exp.ID, err)
 	}
 	return nil
 }
 
 // GetExperiment loads one experiment.
 func (s *Store) GetExperiment(experimentID string) (*Experiment, error) {
-	dir, err := s.ExperimentDir(experimentID)
-	if err != nil {
+	if err := validateID("experiment", experimentID); err != nil {
 		return nil, err
 	}
-	var exp Experiment
-	if err := readJSON(filepath.Join(dir, "experiment.json"), &exp); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("%w: %q in %s", ErrExperimentNotFound, experimentID, s.root)
-		}
-		return nil, err
+	exp, err := scanExperiment(s.db.QueryRow(selectExperimentSQL+` WHERE id = ?`, experimentID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q in %s", ErrExperimentNotFound, experimentID, s.root)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("storage: read experiment %q: %w", experimentID, err)
 	}
 	if exp.SchemaVersion > SchemaVersion {
 		return nil, fmt.Errorf("storage: experiment %q uses schema %d, newer than this Gauge supports (%d)", experimentID, exp.SchemaVersion, SchemaVersion)
 	}
 	if exp.ID != experimentID {
-		return nil, fmt.Errorf("storage: experiment metadata in %s names %q", dir, exp.ID)
+		return nil, fmt.Errorf("storage: experiment record %q returned for %q", exp.ID, experimentID)
 	}
-	return &exp, nil
+	return exp, nil
 }
 
-// ListExperiments loads every readable experiment, newest first. Unreadable
-// experiment directories are reported in the returned error while readable
-// ones are still returned.
+// ListExperiments loads every readable experiment, oldest first. A record that
+// cannot be decoded is reported in the returned error while readable records are
+// still returned, so one bad row cannot hide the rest of the history.
 func (s *Store) ListExperiments() ([]*Experiment, error) {
-	entries, err := os.ReadDir(s.runsDir)
+	rows, err := s.db.Query(selectExperimentSQL + ` ORDER BY created_at, id`)
 	if err != nil {
-		return nil, fmt.Errorf("storage: read runs directory: %w", err)
+		return nil, fmt.Errorf("storage: list experiments: %w", err)
 	}
+	defer rows.Close()
+
 	var experiments []*Experiment
 	var problems []error
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for rows.Next() {
+		exp, err := scanExperiment(rows)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("storage: read experiment: %w", err))
 			continue
 		}
-		exp, err := s.GetExperiment(entry.Name())
-		if err != nil {
-			if errors.Is(err, ErrExperimentNotFound) {
-				continue
-			}
-			problems = append(problems, err)
+		if exp.SchemaVersion > SchemaVersion {
+			problems = append(problems, fmt.Errorf("storage: experiment %q uses schema %d, newer than this Gauge supports (%d)", exp.ID, exp.SchemaVersion, SchemaVersion))
 			continue
 		}
 		experiments = append(experiments, exp)
 	}
-	sort.Slice(experiments, func(i, j int) bool {
-		if experiments[i].CreatedAt.Equal(experiments[j].CreatedAt) {
-			return experiments[i].ID < experiments[j].ID
-		}
-		return experiments[i].CreatedAt.Before(experiments[j].CreatedAt)
-	})
+	if err := rows.Err(); err != nil {
+		problems = append(problems, fmt.Errorf("storage: list experiments: %w", err))
+	}
 	return experiments, errors.Join(problems...)
 }
 
@@ -175,6 +222,13 @@ func (s *Store) CreateAttemptDir(experimentID, attemptID string) (string, error)
 	dir, err := s.AttemptDir(experimentID, attemptID)
 	if err != nil {
 		return "", err
+	}
+	exists, err := experimentExists(s.db, experimentID)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		return "", fmt.Errorf("%w: %q in %s", ErrExperimentNotFound, experimentID, s.root)
 	}
 	if _, statErr := os.Stat(dir); statErr == nil {
 		return "", fmt.Errorf("storage: attempt directory %q already exists", dir)
@@ -187,7 +241,9 @@ func (s *Store) CreateAttemptDir(experimentID, attemptID string) (string, error)
 	return dir, nil
 }
 
-// SaveAttempt writes attempt metadata.
+// SaveAttempt writes one attempt, its evaluator checks, artifact references, and
+// derived metric rows in a single transaction. Re-saving an attempt replaces its
+// child rows, which keeps repeated progress writes consistent.
 func (s *Store) SaveAttempt(expID string, a *Attempt) error {
 	if a == nil {
 		return fmt.Errorf("storage: attempt is nil")
@@ -209,64 +265,136 @@ func (s *Store) SaveAttempt(expID string, a *Attempt) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("storage: create attempt directory: %w", err)
 	}
-	return writeJSON(filepath.Join(dir, "metadata.json"), a)
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		return fmt.Errorf("storage: begin attempt transaction: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	exists, err := experimentExists(tx, expID)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return fmt.Errorf("%w: %q in %s", ErrExperimentNotFound, expID, s.root)
+	}
+	if err := saveAttemptRows(tx, a); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("storage: commit attempt %q: %w", a.ID, err)
+	}
+	return nil
 }
 
-// GetAttempt loads one attempt.
+// GetAttempt loads one attempt and its child rows.
 func (s *Store) GetAttempt(expID, attemptID string) (*Attempt, error) {
-	dir, err := s.AttemptDir(expID, attemptID)
-	if err != nil {
+	if err := validateID("attempt", attemptID); err != nil {
 		return nil, err
 	}
-	var a Attempt
-	if err := readJSON(filepath.Join(dir, "metadata.json"), &a); err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, fmt.Errorf("%w: %q in %s", ErrAttemptNotFound, attemptID, s.root)
-		}
+	if err := validateID("experiment", expID); err != nil {
 		return nil, err
+	}
+	a, err := scanAttempt(s.db.QueryRow(selectAttemptSQL+` WHERE id = ? AND experiment_id = ?`, attemptID, expID))
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q in %s", ErrAttemptNotFound, attemptID, s.root)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("storage: read attempt %q: %w", attemptID, err)
 	}
 	if a.SchemaVersion > SchemaVersion {
 		return nil, fmt.Errorf("storage: attempt %q uses schema %d, newer than this Gauge supports (%d)", attemptID, a.SchemaVersion, SchemaVersion)
 	}
-	if a.ExperimentID != expID {
-		return nil, fmt.Errorf("storage: attempt %q belongs to experiment %q", attemptID, a.ExperimentID)
-	}
-	return &a, nil
-}
-
-// ListAttempts loads every attempt for an experiment, ordered by start time.
-func (s *Store) ListAttempts(expID string) ([]*Attempt, error) {
-	expDir, err := s.ExperimentDir(expID)
-	if err != nil {
+	if err := s.loadAttemptChildren(a); err != nil {
 		return nil, err
 	}
-	entries, err := os.ReadDir(expDir)
+	return a, nil
+}
+
+// ListAttempts loads every readable attempt for an experiment, ordered by start
+// time. Undecodable rows are reported in the returned error while the rest are
+// still returned.
+func (s *Store) ListAttempts(expID string) ([]*Attempt, error) {
+	if err := validateID("experiment", expID); err != nil {
+		return nil, err
+	}
+	rows, err := s.db.Query(selectAttemptSQL+` WHERE experiment_id = ? ORDER BY started_at, id`, expID)
 	if err != nil {
-		return nil, fmt.Errorf("storage: read experiment directory: %w", err)
+		return nil, fmt.Errorf("storage: list attempts: %w", err)
 	}
 	var attempts []*Attempt
 	var problems []error
-	for _, entry := range entries {
-		if !entry.IsDir() {
+	for rows.Next() {
+		a, err := scanAttempt(rows)
+		if err != nil {
+			problems = append(problems, fmt.Errorf("storage: read attempt: %w", err))
 			continue
 		}
-		a, err := s.GetAttempt(expID, entry.Name())
-		if err != nil {
-			if errors.Is(err, ErrAttemptNotFound) {
-				continue
-			}
-			problems = append(problems, err)
+		if a.SchemaVersion > SchemaVersion {
+			problems = append(problems, fmt.Errorf("storage: attempt %q uses schema %d, newer than this Gauge supports (%d)", a.ID, a.SchemaVersion, SchemaVersion))
 			continue
 		}
 		attempts = append(attempts, a)
 	}
-	sort.Slice(attempts, func(i, j int) bool {
-		if attempts[i].StartedAt.Equal(attempts[j].StartedAt) {
-			return attempts[i].ID < attempts[j].ID
+	if err := rows.Err(); err != nil {
+		problems = append(problems, fmt.Errorf("storage: list attempts: %w", err))
+	}
+	// Close the result set before loading child rows: the pool has a single
+	// connection, so an open result set would block the follow-up queries.
+	if err := rows.Close(); err != nil {
+		problems = append(problems, fmt.Errorf("storage: list attempts: %w", err))
+	}
+	for _, a := range attempts {
+		if err := s.loadAttemptChildren(a); err != nil {
+			problems = append(problems, err)
 		}
-		return attempts[i].StartedAt.Before(attempts[j].StartedAt)
-	})
+	}
 	return attempts, errors.Join(problems...)
+}
+
+func (s *Store) loadAttemptChildren(a *Attempt) error {
+	checks, err := loadChecks(s.db, a.ID)
+	if err != nil {
+		return err
+	}
+	if a.Evaluation != nil {
+		a.Evaluation.Checks = checks
+	}
+	artifacts, err := loadArtifacts(s.db, a.ID)
+	if err != nil {
+		return err
+	}
+	a.Artifacts = artifacts
+	return nil
+}
+
+// FindAttempt locates an attempt across all experiments.
+func (s *Store) FindAttempt(attemptID string) (*Attempt, error) {
+	if err := validateID("attempt", attemptID); err != nil {
+		return nil, err
+	}
+	var expID string
+	err := s.db.QueryRow(`SELECT experiment_id FROM attempts WHERE id = ?`, attemptID).Scan(&expID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, fmt.Errorf("%w: %q in %s", ErrAttemptNotFound, attemptID, s.root)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("storage: find attempt %q: %w", attemptID, err)
+	}
+	return s.GetAttempt(expID, attemptID)
+}
+
+func experimentExists(q querier, experimentID string) (bool, error) {
+	var one int
+	err := q.QueryRow(`SELECT 1 FROM experiments WHERE id = ?`, experimentID).Scan(&one)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("storage: check experiment %q: %w", experimentID, err)
+	}
+	return true, nil
 }
 
 func validateExperiment(exp *Experiment) error {
@@ -330,50 +458,6 @@ func validateID(kind, id string) error {
 	return nil
 }
 
-func writeJSON(path string, v any) error {
-	data, err := json.MarshalIndent(v, "", "  ")
-	if err != nil {
-		return fmt.Errorf("storage: encode %s: %w", filepath.Base(path), err)
-	}
-	data = append(data, '\n')
-	dir := filepath.Dir(path)
-	tmp, err := os.CreateTemp(dir, ".tmp-*")
-	if err != nil {
-		return fmt.Errorf("storage: create temporary file for %s: %w", path, err)
-	}
-	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return fmt.Errorf("storage: write %s: %w", path, err)
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return fmt.Errorf("storage: sync %s: %w", path, err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("storage: close %s: %w", path, err)
-	}
-	if err := os.Chmod(tmpName, 0o644); err != nil {
-		return fmt.Errorf("storage: chmod %s: %w", path, err)
-	}
-	if err := os.Rename(tmpName, path); err != nil {
-		return fmt.Errorf("storage: replace %s: %w", path, err)
-	}
-	return nil
-}
-
-func readJSON(path string, v any) error {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	if err := json.Unmarshal(data, v); err != nil {
-		return fmt.Errorf("storage: parse %s: %w", path, err)
-	}
-	return nil
-}
-
 // FingerprintJSON hashes canonical JSON configuration.
 func FingerprintJSON(raw json.RawMessage) string {
 	if len(raw) == 0 {
@@ -397,21 +481,3 @@ func FingerprintJSON(raw json.RawMessage) string {
 
 // Timestamp is the UTC RFC 3339 representation used in reports and logs.
 func Timestamp(t time.Time) string { return t.UTC().Format(time.RFC3339) }
-
-// FindAttempt locates an attempt across all experiments.
-func (s *Store) FindAttempt(attemptID string) (*Attempt, error) {
-	experiments, listErr := s.ListExperiments()
-	for _, exp := range experiments {
-		attempt, err := s.GetAttempt(exp.ID, attemptID)
-		if err == nil {
-			return attempt, nil
-		}
-		if !errors.Is(err, ErrAttemptNotFound) {
-			return nil, err
-		}
-	}
-	if listErr != nil {
-		return nil, listErr
-	}
-	return nil, fmt.Errorf("%w: %q in %s", ErrAttemptNotFound, attemptID, s.root)
-}

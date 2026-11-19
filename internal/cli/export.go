@@ -34,6 +34,7 @@ func (a *App) exportCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer store.Close()
 			exp, err := store.GetExperiment(args[0])
 			if err != nil {
 				return notFoundError(err, store, "experiment", args[0])

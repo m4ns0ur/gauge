@@ -13,9 +13,9 @@ model configuration, execution environment — not just the underlying model.
 > **Status: early.** This repository implements the vertical slice described in
 > [§17 of the implementation plan](docs/gauge-implementation-plan.md): task and
 > suite contracts, a pinned-fixture workspace, the runner, an independent
-> evaluator, a deterministic fake adapter, storage, reports, and a CLI. It also
-> includes the built-in Iris and Pi adapters. SQLite persistence, experiment
-> comparison, the full task catalog, and the Docker backend are the next phases.
+> evaluator, a deterministic fake adapter, SQLite-backed storage, reports, and a
+> CLI. It also includes the built-in Iris and Pi adapters. Experiment comparison,
+> the full task catalog, and the Docker backend are the next phases.
 > See the [implementation tracker](docs/implementation-status.md) for per-phase
 > status, [docs/adapters.md](docs/adapters.md) for the adapter contract and Iris/Pi
 > configuration, and
@@ -68,7 +68,7 @@ policy come from `[adapters.iris.options]` or `[adapters.pi.options]` (see
 | Diff/status capture before evaluation | Implemented |
 | Independent evaluator with versioned JSON output and timeout | Implemented |
 | Normalized event log, stdout/stderr, evaluator output artifacts | Implemented |
-| File-based experiment store, `runs list/show`, `inspect`, `export` | Implemented (SQLite is next) |
+| SQLite experiment store with migrations, `runs list/show`, `inspect`, `export` | Implemented |
 | Markdown/JSON reports with explicit denominators | Implemented |
 | Deterministic fake adapter for tests | Implemented |
 | Iris adapter (`iris jsonl`) with normalized events, usage, and model discovery | Implemented |
@@ -109,7 +109,7 @@ internal/
   proc/                    Process-group supervision
   report/                  Terminal, Markdown, and JSON reports
   runner/                  Per-attempt lifecycle and retention
-  storage/                 Experiment/attempt persistence (file-based today)
+  storage/                 SQLite metadata and artifact references
   suite/                   Suite schema and discovery
   task/                    Task schema, validation, fingerprints
   testutil/                Fixture builders for tests
@@ -131,7 +131,8 @@ docs/                      Design and usage documentation
 - [Metrics](docs/metrics.md) — outcome model, denominators, availability rules.
 - [Running benchmarks](docs/running-benchmarks.md) — configuration, commands,
   retention, inspection, security notes.
-- [Decision record](docs/adr/0001-vertical-slice.md) — scope decisions for this slice.
+- [Decision records](docs/adr/0001-vertical-slice.md) — scope decisions for the
+  vertical slice and [SQLite persistence](docs/adr/0002-sqlite-persistence.md).
 - [Implementation plan](docs/gauge-implementation-plan.md) — the full roadmap.
 
 ## Development

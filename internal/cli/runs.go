@@ -54,6 +54,7 @@ func (a *App) runsListCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer store.Close()
 			experiments, listErr := store.ListExperiments()
 			// Unreadable experiment directories do not hide the readable ones.
 			if listErr != nil {
@@ -128,6 +129,7 @@ func (a *App) runsShowCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer store.Close()
 			exp, err := store.GetExperiment(args[0])
 			if err != nil {
 				return notFoundError(err, store, "experiment", args[0])

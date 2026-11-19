@@ -111,6 +111,14 @@ printf '%s' '{"schema_version":1,"status":"passed","summary":"ok","checks":[{"id
 	if outcome.ExitCode == nil || *outcome.ExitCode != 0 {
 		t.Errorf("exit code = %v", outcome.ExitCode)
 	}
+	// The deferred EndedAt assignment must reach the returned Outcome; without
+	// it every recorded evaluator duration is zero.
+	if outcome.StartedAt.IsZero() || outcome.EndedAt.IsZero() {
+		t.Errorf("timestamps = %v..%v", outcome.StartedAt, outcome.EndedAt)
+	}
+	if outcome.Duration() <= 0 {
+		t.Errorf("duration = %s, want a positive measurement", outcome.Duration())
+	}
 }
 
 func TestRunInfrastructureFailures(t *testing.T) {

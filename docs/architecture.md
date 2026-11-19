@@ -27,7 +27,7 @@ Adapters are built in and registered at startup.
              +----------------+-----------------+
              |                |                 |
         task/suite       experiment          storage
-         loaders        coordinator        (file-based)
+         loaders        coordinator        (SQLite + files)
              |                |
              |          runner (one attempt)
              |                |
@@ -52,7 +52,7 @@ Adapters are built in and registered at startup.
 | `internal/evaluator` | Invoke the task evaluator in a controlled environment and validate its JSON result. |
 | `internal/runner` | Own the per-attempt sequence and enforce the diff-before-evaluation invariant. |
 | `internal/experiment` | Run tasks × repetitions sequentially, persist progress, stop cleanly on cancellation. |
-| `internal/storage` | Persist experiment/attempt metadata and artifact hashes under the data directory. |
+| `internal/storage` | SQLite experiment/attempt metadata, normalized checks/artifacts/metrics, and artifact file paths and hashes. |
 | `internal/metrics` | Aggregate outcomes with explicit denominators and availability rules. |
 | `internal/report` | Render terminal, Markdown, and JSON views of the same document. |
 | `internal/events` | Normalized event vocabulary and a concurrency-safe JSONL recorder. |
@@ -112,19 +112,20 @@ metrics preserve both. See [metrics.md](metrics.md).
 - **Evaluator** — a subprocess invoked with workspace, assets, and scratch paths;
   returns versioned JSON with individual checks. A non-zero exit, timeout, or
   invalid JSON is an evaluator error.
-- **Storage** — a narrow store interface currently backed by JSON files under the
-  data directory. A SQLite implementation can replace it without changing the
-  runner, metrics, or reports.
+- **Storage** — a narrow store backed by SQLite for structured metadata and by
+  files for large artifacts. Versioned migrations and a one-time import of the
+  previous JSON store keep existing results readable. See
+  [ADR 0002](adr/0002-sqlite-persistence.md).
 
 ## Persistence layout
 
 ```text
 <data_dir>/
+├── gauge.db                          (SQLite: experiments, attempts, checks,
+│                                     metrics, artifact hashes)
 └── runs/
     └── <experiment-id>/
-        ├── experiment.json
         └── <attempt-id>/
-            ├── metadata.json
             ├── events.jsonl
             ├── stdout.log              (when the adapter produces it)
             ├── stderr.log              (when the adapter produces it)
@@ -138,8 +139,14 @@ metrics preserve both. See [metrics.md](metrics.md).
             └── evaluation-scratch/     (keep_all only)
 ```
 
-Artifact sizes and SHA-256 hashes are stored in `metadata.json`. Large files never
-live in the metadata document. Timestamps are UTC RFC 3339.
+Artifact sizes and SHA-256 hashes are stored in SQLite, next to normalized
+evaluator checks and typed metric rows with their unit and provenance. Large
+files never live in the database. Timestamps are stored as fixed-width UTC text.
+
+Opening the store applies any pending schema migration. A database written by a
+newer Gauge is rejected. When the database has no experiments, Gauge imports
+metadata from the previous file-based store on first open; unreadable legacy
+records are skipped and reported by `gauge doctor`.
 
 Retention policies: `keep_failed` (default; delete the workspace after a passing
 evaluation), `keep_all`, and `delete_all`. Logs, diffs, events, and evaluation
@@ -166,13 +173,14 @@ cannot observe token usage leaves it absent, and reports say `unavailable`.
 
 ## Extensibility (planned)
 
-- **SQLite** implements the same `Storage` surface; artifact files stay on disk.
 - **Execution backends** wrap workspace preparation and process execution so a
   Docker backend can enforce mount and network isolation without changing task or
   adapter contracts. The `execution.network` field is currently declarative in the
   local backend.
 - **Comparison** builds on the persisted per-attempt records; it must refuse to
   compare experiments whose suite or task fingerprints differ.
+- **Artifact inventory queries** can build on the normalized `artifacts` table
+  without adding columns to the attempt record.
 
 ## Security boundary
 

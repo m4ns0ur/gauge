@@ -74,6 +74,7 @@ determines pass/fail.`,
 			if err != nil {
 				return err
 			}
+			defer store.Close()
 			run := &runner.Runner{
 				Store:     store,
 				Workspace: &workspace.Manager{WorkRoot: cfg.DataDir},

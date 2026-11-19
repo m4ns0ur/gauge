@@ -1,6 +1,7 @@
 # ADR 0001: Vertical-slice implementation decisions
 
-- **Status:** Accepted
+- **Status:** Accepted; the file-store decision is superseded by
+  [ADR 0002](0002-sqlite-persistence.md)
 - **Date:** 2026-11-18
 - **Context:** Implementation plan §17 asks for a narrow vertical slice before
   building the full framework: bootstrap, integration recon, contracts, one

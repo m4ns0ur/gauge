@@ -75,6 +75,11 @@ Reliability counters (timeouts, cancellations, execution failures, setup failure
 are reported alongside task outcomes so a faster or cheaper configuration is not
 mistaken for a better one.
 
+The store also persists typed metric rows (`duration_ms`, `usage.*`,
+`evaluation.duration_ms`) with a unit and a provenance (`gauge-observed` or
+`adapter-reported`). A row exists only for a value a source actually reported,
+so SQL queries over metrics inherit the same availability rule as the reports.
+
 The event vocabulary records tool calls, tool results, and warnings when an adapter
 exposes them; the Iris and Pi adapters do, and `fake` emits canned events.
 Behavioral aggregation (repeated failed actions, whether tests were run, whether

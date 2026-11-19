@@ -149,7 +149,7 @@ func TestRunPassingAttempt(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "workspace")); !os.IsNotExist(err) {
 		t.Error("workspace directory was not removed")
 	}
-	for _, name := range []string{"events.jsonl", "evaluation.json", "diff.patch", "git-status.txt", "metadata.json"} {
+	for _, name := range []string{"events.jsonl", "evaluation.json", "diff.patch", "git-status.txt"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
 			t.Errorf("artifact %s missing: %v", name, err)
 		}

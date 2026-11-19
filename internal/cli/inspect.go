@@ -26,6 +26,7 @@ func (a *App) inspectCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			defer store.Close()
 			attempt, err := store.FindAttempt(args[0])
 			if err != nil {
 				return notFoundError(err, store, "attempt", args[0])

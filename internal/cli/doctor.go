@@ -86,6 +86,12 @@ func (a *App) runDoctor() []doctorCheck {
 	} else {
 		add("data", "ok", store.Root())
 	}
+	if store != nil {
+		if warnings := store.Warnings(); len(warnings) > 0 {
+			add("storage", "warn", strings.Join(warnings, "; "))
+		}
+		defer store.Close()
+	}
 
 	ctx := a.ctx()
 	tasks, taskErr := a.tasks(ctx, cfg)

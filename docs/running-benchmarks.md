@@ -250,27 +250,33 @@ evaluator scratch contents.
 Layout:
 
 ```text
-<data_dir>/runs/<experiment-id>/
-├── experiment.json
-└── <attempt-id>/
-    ├── metadata.json
-    ├── events.jsonl
-    ├── stdout.log / stderr.log
-    ├── diff.patch
-    ├── git-status.txt
-    ├── evaluation.json
-    ├── evaluator-stdout.log / evaluator-stderr.log
-    ├── setup-<n>/
-    ├── workspace/            (per retention policy)
-    └── evaluation-scratch/   (keep_all only)
+<data_dir>/
+├── gauge.db                          (SQLite: experiments, attempts, checks,
+│                                     metrics, artifact hashes)
+└── runs/<experiment-id>/
+    └── <attempt-id>/
+        ├── events.jsonl
+        ├── stdout.log / stderr.log
+        ├── diff.patch
+        ├── git-status.txt
+        ├── evaluation.json
+        ├── evaluator-stdout.log / evaluator-stderr.log
+        ├── setup-<n>/
+        ├── workspace/            (per retention policy)
+        └── evaluation-scratch/   (keep_all only)
 ```
 
 ## Inspecting results
 
-Results are stored in the configured `data_dir`. Commands that read results must
-use the same `--config`/`--data-dir` as the run; a different store is a different
+Results are stored in the configured `data_dir`: structured metadata in
+`gauge.db`, artifacts as files under `runs/`. Commands that read results must use
+the same `--config`/`--data-dir` as the run; a different store is a different
 directory. `gauge run` prints a copy-pasteable
 `gauge --data-dir … runs show …` line for this reason.
+
+To back up or move a store, copy the whole data directory (including
+`gauge.db` and `runs/`) while no Gauge process is running. Deleting `gauge.db`
+keeps the artifact files but loses their index and evaluation records.
 
 ```bash
 gauge --config examples/gauge.toml runs list
@@ -291,11 +297,12 @@ gauge export <experiment-id> --format json > report.json
 
 ## Doctor
 
-`gauge doctor` checks configuration, data-directory writability, task/suite
-validity and resolution, Git availability, and adapter configuration and
-availability. It never makes an inference call. Exit code `3` means at least one
-check failed; warnings (including a missing agent binary and the local-sandbox
-warning) do not fail the command.
+`gauge doctor` checks configuration, the SQLite store (opening it applies pending
+migrations), data-directory writability, task/suite validity and resolution, Git
+availability, and adapter configuration and availability. It never makes an
+inference call. Exit code `3` means at least one check failed; warnings (including
+a missing agent binary, legacy-import warnings, and the local-sandbox warning) do
+not fail the command.
 
 ## Security boundary
 
@@ -321,9 +328,12 @@ warning) do not fail the command.
 | `git executable not found in PATH` | Install Git; `gauge doctor`. |
 | Fixture revision rejected | Task revisions must be full 40-character commit SHAs. Regenerate with `scripts/fixture.sh` after editing a fixture. |
 | Evaluator error, not a task failure | Read `evaluator-stdout.log`/`evaluator-stderr.log`; confirm the command exits 0 and prints one valid JSON object. |
-| `not_evaluated` | Setup or workspace preparation failed; inspect the setup logs and `metadata.json`. |
+| `not_evaluated` | Setup or workspace preparation failed; inspect the setup logs and `gauge inspect <attempt-id>`. |
 | `runs show` reports "experiment not found" | You are reading a different store. Use the `--data-dir` value printed by the run, or pass the same `--config`. |
 | Workspace missing after a failure | Check `retention.workspace`; the default keeps failed workspaces. |
+| `database schema N is newer than this Gauge supports` | The data directory was written by a newer Gauge. Upgrade Gauge or use a different `--data-dir`. |
+| Legacy runs are missing from `runs list` | The store imports the previous JSON metadata once, when the database is empty. Check `gauge doctor` for skipped legacy records. |
+| `database is locked` | Another Gauge process is writing to the same data directory. Gauge serializes attempts within one process; run one experiment per data directory at a time. |
 | `agent "iris" is unavailable` | The `iris` executable is not on `PATH`. Install it or set `[adapters.iris.options] command`. |
 | `agent "pi" is unavailable` | The `pi` executable is not on `PATH`. Install it or set `[adapters.pi.options] command`. |
 | Iris fails with a model or connection error | Check `base_url` and that the endpoint is running. A fresh Iris home has no default model: set `model` or pass `--model`. |

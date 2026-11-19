@@ -3,10 +3,10 @@
 Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 
 - **Last updated:** 2026-11-19
-- **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`, and
-  live checks of both adapters against the locally installed `iris` (commit
-  `d1af31d`) and `pi` (1.5.2) binaries: JSONL streams, version/model discovery,
-  startup-failure paths, and retry handling.
+- **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`,
+  storage tests covering migrations, reconnects, legacy import, corruption, and
+  normalized metric/check/artifact rows, and live checks of both adapters against
+  the locally installed `iris` (commit `d1af31d`) and `pi` (1.5.2) binaries.
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -21,7 +21,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 3 — Workspace and local runner | **Done** | Fresh pinned clones, setup, hard timeouts, process-group kill, diff capture, retention, coordinator, fake end-to-end tests. |
 | 4 — Independent evaluation | **Done** | Separate evaluator process, versioned JSON, timeouts, infra-vs-task failure split, artifact capture, tests. |
 | 5 — Iris and Pi adapters | **Partial** | Both adapters built in and covered by recorded-stream, stub-executable, and CLI end-to-end tests. The opt-in live integration test remains. |
-| 6 — SQLite persistence and inspection | **Partial** | File store, `runs list/show`, `inspect`, JSON/Markdown export work; SQLite and migrations do not exist. |
+| 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Partial** | Aggregates, per-task/category, availability rules, repetitions, reports done; `compare` and tool-call aggregation missing. |
 | 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
@@ -124,25 +124,28 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   model.
 - A published baseline report belongs to phase 8.
 
-### Phase 6 — SQLite persistence and inspection: Partial
+### Phase 6 — SQLite persistence and inspection: Done
 
-**Works now**
-
-- File-based store under `<data_dir>/runs/<experiment>/<attempt>/`, atomic JSON,
-  artifact hashes, schema-version guard ([internal/storage](../internal/storage/store.go)).
-- `gauge runs list`, `gauge runs show`, `gauge inspect`, `gauge export --format
-  json|markdown`.
-- Results survive restarts; unreadable records are reported without hiding readable
-  ones; corrupt/newer schemas are rejected with context.
-- Secret redaction before persistence (credential-like keys only; token counts are
-  preserved).
-
-**Remaining**
-
-- SQLite schema and migrations behind the existing store operations.
-- Typed metric rows with provenance (currently usage and outcomes live in attempt
-  metadata).
-- Larger artifact inventory/metadata queries once the database exists.
+- SQLite metadata at `<data_dir>/gauge.db` behind the existing `storage.Store`
+  operations, with versioned migrations recorded in `schema_migrations`
+  ([internal/storage/sqlite.go](../internal/storage/sqlite.go),
+  [store.go](../internal/storage/store.go)).
+- Normalized `experiments`, `attempts`, `checks`, `artifacts`, and `metrics`
+  tables with foreign keys and indexes; events, logs, diffs, and evaluator output
+  stay as files with their paths and SHA-256 hashes in the database
+  ([rows.go](../internal/storage/rows.go)).
+- Typed metric rows carry a unit and provenance (`gauge-observed`,
+  `adapter-reported`); unavailable usage is absent rather than zero.
+- Fixed-width UTC timestamps keep SQLite ordering chronological, and a database
+  written by a newer Gauge is rejected instead of misread.
+- A one-time best-effort import reads metadata from the previous file-based store
+  when the database is empty; skipped records are surfaced by `gauge doctor`
+  ([internal/storage/legacy.go](../internal/storage/legacy.go)).
+- `runs list/show`, `inspect`, and JSON/Markdown export are unchanged and read the
+  database. Secret redaction still happens before persistence.
+- Tests cover round-trips, reopen persistence, normalized child rows, metric
+  provenance, child-row replacement, ordering, foreign keys, schema guards,
+  corrupt databases, legacy import, and redaction.
 
 ### Phase 7 — Comparison and metrics reporting: Partial
 
@@ -211,17 +214,18 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 5. Enforce per-attempt and evaluator timeouts | **Done**. |
 | 6. Evaluate independently with hidden checks | **Done**. |
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
-| 8. Persist and inspect after restart | **Done** — file store. |
+| 8. Persist and inspect after restart | **Done** — SQLite metadata and file artifacts. |
 | 9. Compare two experiments with per-task outcomes and honest metrics | **Not started** — aggregates exist; `compare` does not. |
 | 10. Reproduce a published baseline | **Not started**. |
 
 ## Deliberate deviations
 
-Recorded in [ADR 0001](adr/0001-vertical-slice.md):
+Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
+[ADR 0002](adr/0002-sqlite-persistence.md):
 
 | Area | Current choice |
 |---|---|
-| Persistence | File store first; SQLite and migrations are phase 6. |
+| Persistence | SQLite metadata (`gauge.db`) plus file artifacts; versioned migrations and a one-time legacy import. |
 | Fixtures | Bare repositories plus readable sources and `scripts/fixture.sh`. |
 | Suites | Single YAML files rather than directories. |
 | Evaluator | Positional args + `GAUGE_*` env, strict JSON, candidate failures exit 0. |
@@ -233,11 +237,10 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md):
 
 1. Add an opt-in live integration test for Iris and Pi, gated by explicit
    environment configuration for a local model endpoint.
-2. Add SQLite storage and migrations behind the existing operations.
-3. Add `gauge compare` with revision guards and difference reporting.
-4. Grow the task catalog and add `coding`, `repository`, and `full` suites.
-5. Run and publish the Iris/Pi baseline.
-6. Add the Docker execution backend and enforce isolation policy.
+2. Add `gauge compare` with revision guards and difference reporting.
+3. Grow the task catalog and add `coding`, `repository`, and `full` suites.
+4. Run and publish the Iris/Pi baseline.
+5. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 

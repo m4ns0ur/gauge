@@ -1,11 +1,9 @@
-// Package storage persists experiment and attempt metadata plus artifact
-// references.
+// Package storage defines Gauge's persisted domain records: experiments,
+// attempts, evaluator checks, artifacts, usage, and typed metrics.
 //
-// The initial implementation is file-based: JSON documents under
-// <data_dir>/runs and large artifacts as sibling files. This matches the
-// on-disk layout documented in the implementation plan and keeps the vertical
-// slice small. The Store interface is deliberately narrow so a SQLite-backed
-// implementation can replace it without touching the runner or reports.
+// Metadata lives in SQLite; large artifacts stay as files. The Store interface
+// is deliberately narrow so the runner, reports, and CLI do not depend on the
+// database layout.
 package storage
 
 import (
@@ -56,7 +54,6 @@ const (
 	ArtifactEvaluation       = "evaluation.json"
 	ArtifactEvaluatorStdout  = "evaluator-stdout.log"
 	ArtifactEvaluatorStderr  = "evaluator-stderr.log"
-	ArtifactMetadata         = "metadata.json"
 	ArtifactAdapterRawPrefix = "adapter-raw-"
 )
 

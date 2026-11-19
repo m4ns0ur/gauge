@@ -56,8 +56,11 @@ func (o Outcome) Duration() time.Duration {
 
 // Run invokes the task evaluator in a controlled environment. It always
 // returns an Outcome; infrastructure problems are reported through Err.
-func Run(ctx context.Context, req Request) Outcome {
-	out := Outcome{StartedAt: time.Now().UTC()}
+//
+// The result is named so the deferred EndedAt assignment is reflected in the
+// returned value; with an unnamed result the defer would only touch a copy.
+func Run(ctx context.Context, req Request) (out Outcome) {
+	out = Outcome{StartedAt: time.Now().UTC()}
 	defer func() { out.EndedAt = time.Now().UTC() }()
 
 	if req.Task == nil {
