@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+snake-case|^TestSnakeCase$|SnakeCase handles separators, camelCase, and acronym boundaries.|SnakeCase produces the wrong underscores or casing.

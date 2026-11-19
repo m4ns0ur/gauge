@@ -1,0 +1,34 @@
+schema_version: 1
+id: text-wordcount
+name: Count words across punctuation and Unicode
+category: repository-engineering
+difficulty: medium
+description: Count words by Unicode letters/digits instead of splitting on spaces.
+tags:
+  - go
+  - unicode
+  - strings
+  - bug-fix
+
+fixture:
+  path: ../../../fixtures/text-go.git
+  revision: b843faf1713d3fcef6ab8bac0d5995f8f8dff787
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: Hidden test mixes punctuation, tabs, newlines, digits, and non-ASCII letters.

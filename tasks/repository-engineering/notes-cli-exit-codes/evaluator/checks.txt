@@ -1,0 +1,3 @@
+# id|test regexp|passed message|failed message
+unknown-command|^TestUnknownCommand$|Unknown commands print usage to stderr and exit 2.|Unknown commands do not fail with usage on stderr.
+help-command|^TestHelpCommand$|Help flags print usage to stdout and exit 0.|Help flags do not print usage to stdout and exit 0.

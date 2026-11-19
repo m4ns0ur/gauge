@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+whitespace-normalization|^TestNormalizeSpace$|NormalizeSpace collapses and trims whitespace.|NormalizeSpace does not collapse or trim whitespace correctly.

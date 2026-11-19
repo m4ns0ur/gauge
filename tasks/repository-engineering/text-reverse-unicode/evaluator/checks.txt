@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+unicode-reversal|^TestReverseUnicode$|Reverse handles multibyte characters and ASCII.|Reverse still mangles multibyte characters.

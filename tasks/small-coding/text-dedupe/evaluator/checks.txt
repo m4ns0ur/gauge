@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+stable-dedupe|^TestDedupeStable$|Dedupe preserves first occurrence and returns a non-nil empty slice.|Dedupe loses order or returns a nil slice for empty input.

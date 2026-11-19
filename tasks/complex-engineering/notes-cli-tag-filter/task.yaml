@@ -1,0 +1,34 @@
+schema_version: 1
+id: notes-cli-tag-filter
+name: Filter notes by tag end to end
+category: complex-engineering
+difficulty: medium
+description: Add case-insensitive tag filtering to the store and list command.
+tags:
+  - go
+  - cli
+  - store
+  - multi-package
+
+fixture:
+  path: ../../../fixtures/notes-go.git
+  revision: 409550fc4651ecd680a5069ae826743941bf4ee0
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: Hidden tests cover the store filter and the CLI flag; the test seeds the store directly.

@@ -1,0 +1,9 @@
+schema_version: 1
+id: repository
+name: Repository engineering tasks
+description: Bug fixes and behavior changes in small but realistic repositories.
+tasks:
+  - id: greeting-all
+  - id: text-reverse-unicode
+  - id: text-wordcount
+  - id: notes-cli-exit-codes

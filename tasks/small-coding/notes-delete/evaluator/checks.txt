@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+delete-note|^TestDeleteNote$|Delete removes notes, preserves order, and rejects unknown IDs.|Delete removes the wrong notes or accepts unknown IDs.

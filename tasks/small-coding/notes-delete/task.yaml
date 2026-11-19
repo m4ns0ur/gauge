@@ -1,0 +1,33 @@
+schema_version: 1
+id: notes-delete
+name: Implement note deletion
+category: small-coding
+difficulty: easy
+description: Implement Delete with unknown-ID errors and order preservation.
+tags:
+  - go
+  - store
+  - errors
+
+fixture:
+  path: ../../../fixtures/notes-go.git
+  revision: 409550fc4651ecd680a5069ae826743941bf4ee0
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: Hidden test checks successful deletion, order, Find, and failure atomicity.

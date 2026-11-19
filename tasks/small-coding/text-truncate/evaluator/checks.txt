@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+rune-truncation|^TestTruncateRunes$|Truncate counts runes and appends the ellipsis within the limit.|Truncate does not honor the rune limit or ellipsis rule.

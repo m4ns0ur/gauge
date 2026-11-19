@@ -6,9 +6,9 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`,
   storage tests covering migrations, reconnects, legacy import, corruption, and
   normalized metric/check/artifact rows, comparison tests covering fingerprint
-  guards and per-task deltas, and the opt-in live integration test passing with
-  the real `iris` (commit `d1af31d`) and `pi` 1.5.2 binaries against a local
-  `qwen3.6-35B-Q1` endpoint.
+  guards and per-task deltas, a bundled-content test loading every task and suite,
+  and the opt-in live integration test passing with the real `iris` (commit
+  `d1af31d`) and `pi` 1.5.2 binaries against a local `qwen3.6-35B-Q1` endpoint.
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -25,7 +25,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Done** | Aggregates, per-task/category tables, availability rules, repetitions, `gauge compare` with fingerprint guards, tool-call aggregates from event logs. |
-| 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
+| 8 — Initial benchmark suite and docs | **Partial** | 10-task Go catalog with `smoke`, `coding`, `repository`, and `full` suites and a content test; the 15–25 target (including operational tasks) and published baseline remain. |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
 
 ## Phase detail
@@ -177,17 +177,35 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 
 **Works now**
 
-- Usage, task-format, adapter, metrics, architecture, and running docs.
-- One deterministic repository task with provenance metadata and maintainer notes.
-- Smoke suite runnable with the fake adapter; CI-safe tests.
+- Ten deterministic Go tasks across three categories:
+  - small coding: `text-truncate`, `text-dedupe`, `text-normalize-space`,
+    `text-snake-case`, `notes-delete` (5);
+  - repository engineering: `greeting-all`, `text-reverse-unicode`,
+    `text-wordcount`, `notes-cli-exit-codes` (4);
+  - complex engineering: `notes-cli-tag-filter` (multi-package change) (1).
+- Two new pinned fixtures ([text-go](../fixtures/src/text-go),
+  [notes-go](../fixtures/src/notes-go)) plus the existing greeting fixture. Every
+  task pins a full commit SHA, keeps hidden tests in evaluator assets, and
+  records provenance/license.
+- `smoke`, `coding`, `repository`, and `full` suites
+  ([suites](../suites)). `full` contains the entire catalog and is checked against
+  it automatically.
+- [internal/content](../internal/content/content_test.go) loads every bundled
+  task and suite in tests, verifies fixture revisions and evaluator assets, and
+  fails if a task is missing from `full`.
+- Task evaluators are independent `go test` runs over hidden tests copied into a
+  scratch workspace; they were verified to fail on the unsolved fixture and pass
+  with reference solutions.
+- Usage, task format, adapter, metrics, architecture, running, and status docs
+  are current.
 
 **Remaining**
 
-- 15–25 tasks across small coding, repository engineering, complex engineering, and
-  operational categories.
-- `coding`, `repository`, and `full` suites alongside `smoke`.
-- Baseline runs against Iris and Pi with a published configuration/limitations
-  report.
+- Grow the catalog to the 15–25 target, adding operational/recovery tasks and
+  more complex multi-package work.
+- Run and publish the initial Iris/Pi baseline with the full catalog
+  (phase 8 acceptance).
+- Add a second language only after the Go execution/evaluator model is stable.
 
 ### Phase 9 — Docker execution backend: Not started
 
@@ -243,8 +261,9 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
 
 ## Next actions, in order
 
-1. Grow the task catalog and add `coding`, `repository`, and `full` suites.
-2. Run and publish the Iris/Pi baseline.
+1. Expand the 10-task catalog to the 15–25 target (operational/recovery tasks and
+   more complex engineering work).
+2. Run and publish the Iris/Pi baseline on the full catalog.
 3. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file

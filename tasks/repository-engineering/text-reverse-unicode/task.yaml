@@ -1,0 +1,34 @@
+schema_version: 1
+id: text-reverse-unicode
+name: Reverse Unicode text correctly
+category: repository-engineering
+difficulty: medium
+description: Fix byte-based reversal so multibyte characters survive.
+tags:
+  - go
+  - unicode
+  - strings
+  - bug-fix
+
+fixture:
+  path: ../../../fixtures/text-go.git
+  revision: b843faf1713d3fcef6ab8bac0d5995f8f8dff787
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: Hidden test checks rune-aware reversal, including an emoji outside the BMP.

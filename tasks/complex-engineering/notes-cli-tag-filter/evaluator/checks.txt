@@ -1,0 +1,3 @@
+# id|test regexp|passed message|failed message
+tag-filter|^TestFilterByTag$|FilterByTag matches tags case-insensitively in store order.|FilterByTag returns wrong notes, casing, or empty-tag results.
+tag-filter-cli|^TestListByTag$|list --tag filters output and rejects a missing value.|list --tag does not filter or validate its argument.

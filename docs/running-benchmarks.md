@@ -129,6 +129,30 @@ A Pi run is `completed` only when the stream settles cleanly and the final
 assistant message stops normally. Pi exits 0 even after a failed model response,
 so the exit code alone is never treated as success.
 
+## Bundled benchmark content
+
+The repository ships an initial 10-task Go catalog and four suites:
+
+| Suite | Tasks | Purpose |
+|---|---:|---|
+| `smoke` | 1 | Fast end-to-end validation with the fake adapter. |
+| `coding` | 5 | Focused implementation tasks in small Go libraries. |
+| `repository` | 4 | Bug fixes and behavior changes in small repositories. |
+| `full` | 10 | Every bundled task; use for comparisons, not routine checks. |
+
+Task categories are `small-coding` (5), `repository-engineering` (4), and
+`complex-engineering` (1). Each task pins a full fixture commit, keeps hidden
+tests in its evaluator assets, and has provenance metadata. The catalog is
+intentionally small and Go-only for now; quality and determinism matter more than
+count, and the target is 15–25 tasks including operational/recovery work.
+
+```bash
+gauge tasks list                    # discover tasks
+gauge tasks list --category small-coding
+gauge suites show full
+gauge run --suite coding --agent iris
+```
+
 ## Commands
 
 ```bash

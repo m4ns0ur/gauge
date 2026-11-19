@@ -1,0 +1,15 @@
+schema_version: 1
+id: full
+name: Full bundled benchmark
+description: Every bundled task. Use a smaller suite for routine checks; full is intended for comparisons.
+tasks:
+  - id: greeting-all
+  - id: text-reverse-unicode
+  - id: text-wordcount
+  - id: text-truncate
+  - id: text-dedupe
+  - id: text-normalize-space
+  - id: text-snake-case
+  - id: notes-cli-exit-codes
+  - id: notes-delete
+  - id: notes-cli-tag-filter

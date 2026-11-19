@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+word-count-unicode|^TestWordCountPunctuationAndCase$|WordCount handles punctuation, whitespace, digits, and Unicode case.|WordCount still mis-splits or mis-cases words.

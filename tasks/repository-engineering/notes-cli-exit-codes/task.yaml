@@ -1,0 +1,33 @@
+schema_version: 1
+id: notes-cli-exit-codes
+name: Handle unknown commands and help
+category: repository-engineering
+difficulty: easy
+description: Return exit code 2 for unknown commands and support --help.
+tags:
+  - go
+  - cli
+  - errors
+
+fixture:
+  path: ../../../fixtures/notes-go.git
+  revision: 409550fc4651ecd680a5069ae826743941bf4ee0
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: Hidden test drives the in-process CLI so no binary build is required.
