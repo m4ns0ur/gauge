@@ -152,11 +152,34 @@ instead of `go`:
 
 ```bash
 ./scripts/go.sh test ./...
+```
 
-# Opt-in end-to-end check against a real agent and a local model endpoint
+### Live agent integration test
+
+The standard suite never calls a model. To exercise the real Iris and Pi binaries
+against a running OpenAI-compatible endpoint, run the opt-in test:
+
+```bash
 GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
   ./scripts/go.sh test ./internal/cli -run TestLiveAdapters -v -timeout 30m
 ```
+
+It generates isolated Iris/Pi configuration (your `~/.iris` and `~/.pi` are not
+read), runs one pinned-fixture task per adapter, and checks the completed
+execution, the independent evaluator verdict, usage, and normalized events.
+Optional settings:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `GAUGE_LIVE_ENDPOINT` | `http://127.0.0.1:8080/v1` | OpenAI-compatible base URL |
+| `GAUGE_LIVE_AGENTS` | `iris,pi` | Adapters to run, comma-separated |
+| `GAUGE_LIVE_TIMEOUT` | `10m` | Per-attempt budget |
+| `GAUGE_LIVE_REPETITIONS` | `1` | Attempts per adapter; reports per-attempt workload and median duration |
+| `GAUGE_LIVE_REQUIRE_PASS` | off | Set to `1` to fail when the model does not solve the task |
+
+Use three or more repetitions when comparing adapters: a single attempt is
+dominated by model variance, prompt caching, and turn count rather than by real
+differences.
 
 ## Safety
 
