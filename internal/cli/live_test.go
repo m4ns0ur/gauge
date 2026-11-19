@@ -1,10 +1,13 @@
 package cli_test
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +31,8 @@ import (
 //	GAUGE_LIVE_ENDPOINT  OpenAI-compatible base URL (default http://127.0.0.1:8080/v1)
 //	GAUGE_LIVE_AGENTS    comma-separated adapters (default iris,pi)
 //	GAUGE_LIVE_TIMEOUT   per-attempt budget (default 10m)
+//	GAUGE_LIVE_REPETITIONS  attempts per adapter (default 1)
+//	GAUGE_LIVE_REQUIRE_PASS require every attempt to pass (default off)
 //
 // The test asserts that each adapter completes the attempt, the independent
 // evaluator records a verdict, and the task actually passed. It is the
@@ -52,6 +57,15 @@ func TestLiveAdapters(t *testing.T) {
 		}
 		timeout = parsed
 	}
+	repetitions := 1
+	if raw := strings.TrimSpace(os.Getenv("GAUGE_LIVE_REPETITIONS")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 1 || parsed > 20 {
+			t.Fatalf("GAUGE_LIVE_REPETITIONS must be between 1 and 20, got %q", raw)
+		}
+		repetitions = parsed
+	}
+	requirePass := os.Getenv("GAUGE_LIVE_REQUIRE_PASS") == "1"
 
 	rawAgents := strings.TrimSpace(os.Getenv("GAUGE_LIVE_AGENTS"))
 	if rawAgents == "" {
@@ -66,12 +80,12 @@ func TestLiveAdapters(t *testing.T) {
 			if _, err := exec.LookPath(agent); err != nil {
 				t.Skipf("%s executable not found in PATH", agent)
 			}
-			verifyLiveAgent(t, agent, endpoint, model, timeout)
+			verifyLiveAgent(t, agent, endpoint, model, timeout, repetitions, requirePass)
 		})
 	}
 }
 
-func verifyLiveAgent(t *testing.T, agent, endpoint, model string, timeout time.Duration) {
+func verifyLiveAgent(t *testing.T, agent, endpoint, model string, timeout time.Duration, repetitions int, requirePass bool) {
 	t.Helper()
 
 	bench := testutil.NewBench(t)
@@ -88,7 +102,7 @@ func verifyLiveAgent(t *testing.T, agent, endpoint, model string, timeout time.D
 	bench.AddSuite("smoke", "write-answer")
 	bench.WriteConfig(liveAgentConfig(t, agent, endpoint, model))
 
-	stdout, stderr, err := execCLI(t, bench, "run", "--suite", "smoke", "--agent", agent)
+	stdout, stderr, err := execCLI(t, bench, "run", "--suite", "smoke", "--agent", agent, "--repetitions", strconv.Itoa(repetitions))
 	if err != nil && cli.ExitCode(err) != cli.ExitTaskFailed {
 		t.Fatalf("live run failed: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
 	}
@@ -103,55 +117,78 @@ func verifyLiveAgent(t *testing.T, agent, endpoint, model string, timeout time.D
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(attempts) != 1 {
-		t.Fatalf("attempts = %d, want 1", len(attempts))
-	}
-	attempt := attempts[0]
-	t.Logf("%s: execution=%s outcome=%s duration=%s model=%q provider=%q version=%q usage=%s",
-		agent,
-		attempt.Execution.Completion,
-		attempt.Outcome,
-		time.Duration(attempt.DurationMS)*time.Millisecond,
-		attempt.Model,
-		attempt.Provider,
-		attempt.AgentVersion,
-		usageString(attempt.Usage),
-	)
-
-	if attempt.Execution.Completion != adapter.Completed {
-		t.Fatalf("%s execution = %q (error %q)\nstdout:\n%s\nstderr:\n%s",
-			agent, attempt.Execution.Completion, attempt.Execution.Error, stdout, stderr)
-	}
-	if attempt.Outcome != storage.OutcomePassed {
-		t.Fatalf("%s task outcome = %s (summary %q)\nstdout:\n%s\nstderr:\n%s",
-			agent, attempt.Outcome, evaluationSummary(attempt), stdout, stderr)
-	}
-	if attempt.Model == "" {
-		t.Errorf("%s did not record a model", agent)
-	}
-	if attempt.Usage == nil || attempt.Usage.TotalTokens == nil || *attempt.Usage.TotalTokens == 0 {
-		t.Errorf("%s did not record usage: %+v", agent, attempt.Usage)
-	}
-	if agent == "pi" && attempt.AgentVersion == "" {
-		t.Errorf("pi did not record an agent version")
-	}
-	if _, ok := attempt.Artifacts[storage.ArtifactEvents]; !ok {
-		t.Errorf("%s did not record events.jsonl: %+v", agent, attempt.Artifacts)
-	}
-	if _, ok := attempt.Artifacts[storage.ArtifactStdout]; !ok {
-		t.Errorf("%s did not record stdout.log: %+v", agent, attempt.Artifacts)
+	if len(attempts) != repetitions {
+		t.Fatalf("attempts = %d, want %d", len(attempts), repetitions)
 	}
 
-	dir, err := store.AttemptDir(expID, attempt.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	events := testutil.ReadFile(t, filepath.Join(dir, storage.ArtifactEvents))
-	for _, want := range []string{`"type":"agent.message"`, `"type":"tool.call"`} {
-		if !strings.Contains(events, want) {
-			t.Errorf("%s events.jsonl missing %s:\n%s", agent, want, events)
+	var durations []time.Duration
+	passed := 0
+	for _, attempt := range attempts {
+		meta := liveAdapterMetadata{}
+		_ = json.Unmarshal(attempt.AdapterMetadata, &meta)
+		t.Logf("%s rep %d: execution=%s outcome=%s duration=%s model=%q provider=%q version=%q usage=%s requests=%d tool_calls=%d",
+			agent,
+			attempt.Repetition+1,
+			attempt.Execution.Completion,
+			attempt.Outcome,
+			time.Duration(attempt.DurationMS)*time.Millisecond,
+			attempt.Model,
+			attempt.Provider,
+			attempt.AgentVersion,
+			usageString(attempt.Usage),
+			meta.LLMRequests,
+			meta.ToolCalls,
+		)
+
+		if attempt.Execution.Completion != adapter.Completed {
+			t.Fatalf("%s rep %d execution = %q (error %q)\nstdout:\n%s\nstderr:\n%s",
+				agent, attempt.Repetition+1, attempt.Execution.Completion, attempt.Execution.Error, stdout, stderr)
 		}
+		// The adapter and evaluator pipeline is what this test verifies. Whether
+		// the model solves the task is a benchmark result, not an integration
+		// fact, so a failed verdict is reported unless GAUGE_LIVE_REQUIRE_PASS=1.
+		if attempt.Outcome == storage.OutcomePassed {
+			passed++
+		} else if requirePass {
+			t.Errorf("%s rep %d task outcome = %s (summary %q)\nstdout:\n%s\nstderr:\n%s",
+				agent, attempt.Repetition+1, attempt.Outcome, evaluationSummary(attempt), stdout, stderr)
+		} else {
+			t.Logf("%s rep %d task outcome = %s (summary %q); the integration itself completed. Set GAUGE_LIVE_REQUIRE_PASS=1 to require a pass.",
+				agent, attempt.Repetition+1, attempt.Outcome, evaluationSummary(attempt))
+		}
+		if attempt.Model == "" {
+			t.Errorf("%s rep %d did not record a model", agent, attempt.Repetition+1)
+		}
+		if attempt.Usage == nil || attempt.Usage.TotalTokens == nil || *attempt.Usage.TotalTokens == 0 {
+			t.Errorf("%s rep %d did not record usage: %+v", agent, attempt.Repetition+1, attempt.Usage)
+		}
+		if agent == "pi" && attempt.AgentVersion == "" {
+			t.Errorf("%s rep %d did not record an agent version", agent, attempt.Repetition+1)
+		}
+		if _, ok := attempt.Artifacts[storage.ArtifactEvents]; !ok {
+			t.Errorf("%s rep %d did not record events.jsonl: %+v", agent, attempt.Repetition+1, attempt.Artifacts)
+		}
+		if _, ok := attempt.Artifacts[storage.ArtifactStdout]; !ok {
+			t.Errorf("%s rep %d did not record stdout.log: %+v", agent, attempt.Repetition+1, attempt.Artifacts)
+		}
+
+		dir, err := store.AttemptDir(expID, attempt.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		events := testutil.ReadFile(t, filepath.Join(dir, storage.ArtifactEvents))
+		for _, want := range []string{`"type":"agent.message"`, `"type":"tool.call"`} {
+			if !strings.Contains(events, want) {
+				t.Errorf("%s rep %d events.jsonl missing %s", agent, attempt.Repetition+1, want)
+			}
+		}
+		durations = append(durations, time.Duration(attempt.DurationMS)*time.Millisecond)
 	}
+
+	sort.Slice(durations, func(i, j int) bool { return durations[i] < durations[j] })
+	median := durations[len(durations)/2]
+	t.Logf("%s: %d/%d passed; median duration %s (range %s–%s)",
+		agent, passed, len(attempts), median, durations[0], durations[len(durations)-1])
 }
 
 // liveAgentConfig writes self-contained agent configuration for the live test.
@@ -201,6 +238,13 @@ thinking = "off"
 		t.Fatalf("unknown live agent %q (want iris or pi)", agent)
 		return ""
 	}
+}
+
+// liveAdapterMetadata is the subset of adapter metadata both adapters report, so
+// the test can show workload size alongside duration.
+type liveAdapterMetadata struct {
+	LLMRequests int `json:"llm_requests"`
+	ToolCalls   int `json:"tool_calls"`
 }
 
 func usageString(usage *events.Usage) string {

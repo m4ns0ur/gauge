@@ -117,9 +117,12 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - An opt-in live integration test (`internal/cli/live_test.go`) drives both real
   binaries against a running OpenAI-compatible endpoint:
   `GAUGE_LIVE=1 GAUGE_LIVE_MODEL=<model> go test ./internal/cli -run TestLiveAdapters -v -timeout 30m`.
-  It passed for both adapters against a local `qwen3.6-35B-Q1` endpoint
-  (Iris ~9.8s, Pi ~5.8s, both tasks evaluated as passed with usage recorded).
-  The standard suite skips it and never calls a model.
+  It passed for both adapters against a local `qwen3.6-35B-Q1` endpoint in the
+  initial run (Iris ~9.8s, Pi ~5.8s, both tasks evaluated as passed with usage
+  recorded). The task verdict is reported rather than required by default; set
+  `GAUGE_LIVE_REQUIRE_PASS=1` to enforce it. `GAUGE_LIVE_REPETITIONS` runs
+  multiple attempts and reports per-attempt workload plus a median duration. The
+  standard suite skips the test and never calls a model.
 
 ### Phase 6 — SQLite persistence and inspection: Done
 

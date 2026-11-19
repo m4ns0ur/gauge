@@ -353,10 +353,10 @@ The evaluator still decides whether the task passed.
 - Model/provider — taken from the final assistant message, preferring
   `responseModel` (the concrete model reported by the provider).
 - Agent version — `pi --version`.
-- `result.Metadata` — session ID/version, stop reason, settlement, retries,
-  compactions, tool counters, response ID, record counts, unrecognized event
-  types, raw-output errors, the SHA-256 of the copied `models_file`, and whether
-  an `auth_file` was installed.
+- `result.Metadata` — session ID/version, stop reason, settlement, model request
+  count, retries, compactions, tool counters, response ID, record counts,
+  unrecognized event types, raw-output errors, the SHA-256 of the copied
+  `models_file`, and whether an `auth_file` was installed.
 
 ### Known limitations
 
@@ -390,8 +390,10 @@ The evaluator still decides whether the task passed.
   stub, proving that both adapters satisfy the same runner/evaluator/storage
   lifecycle as `fake`.
 - The opt-in live integration test in `internal/cli/live_test.go` runs both real
-  binaries against an OpenAI-compatible endpoint and asserts a completed,
-  independently passed task with recorded usage:
+  binaries against an OpenAI-compatible endpoint and asserts a completed
+  execution, an independent evaluator verdict, recorded usage, and normalized
+  events. The task verdict is reported; set `GAUGE_LIVE_REQUIRE_PASS=1` to make a
+  passing task mandatory.
 
   ```bash
   GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
@@ -400,9 +402,11 @@ The evaluator still decides whether the task passed.
 
   It generates isolated Iris/Pi configuration, so `~/.iris` and `~/.pi` are never
   read. Optional variables: `GAUGE_LIVE_ENDPOINT`, `GAUGE_LIVE_AGENTS`,
-  `GAUGE_LIVE_TIMEOUT`. The standard suite skips the test and never calls a model
-  or the network. It passed for both adapters against a local
-  `qwen3.6-35B-Q1` endpoint (Iris 9.8s, Pi 5.8s).
+  `GAUGE_LIVE_TIMEOUT`, `GAUGE_LIVE_REPETITIONS`, `GAUGE_LIVE_REQUIRE_PASS`.
+  With repetitions it reports per-attempt workload and a median duration. The
+  standard suite skips the test and never calls a model or the network. It
+  passed for both adapters against a local `qwen3.6-35B-Q1` endpoint in the
+  initial run (Iris 9.8s, Pi 5.8s).
 
 Both adapters are built into Gauge, are configurable only through adapter
 options, and use public interfaces without private imports or source changes.

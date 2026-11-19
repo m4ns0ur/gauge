@@ -90,6 +90,7 @@ type adapterMetadata struct {
 	RawOutputError     string   `json:"raw_output_error,omitempty"`
 	AutoRetries        int      `json:"auto_retries,omitempty"`
 	Compactions        int      `json:"compactions,omitempty"`
+	LLMRequests        int      `json:"llm_requests,omitempty"`
 	ToolCalls          int      `json:"tool_calls,omitempty"`
 	ToolFailures       int      `json:"tool_failures,omitempty"`
 	ModelsFileSHA256   string   `json:"models_file_sha256,omitempty"`
@@ -128,6 +129,7 @@ type streamState struct {
 
 	autoRetries  int
 	compactions  int
+	llmRequests  int
 	toolCalls    int
 	toolFailures int
 	usage        usageTotals
@@ -350,6 +352,8 @@ func (s *streamState) handleMessage(msg wireMessage) {
 	if msg.Role != "assistant" {
 		return
 	}
+	// One completed assistant message is one model response for that turn.
+	s.llmRequests++
 	if text := contentText(msg.Content); strings.TrimSpace(text) != "" {
 		s.emit(events.Event{Type: events.TypeAgentMessage, Text: text})
 	}
@@ -435,6 +439,7 @@ func (s *streamState) metadata(command string, cfg Config) adapterMetadata {
 		ParseErrors:    s.parseErrors,
 		AutoRetries:    s.autoRetries,
 		Compactions:    s.compactions,
+		LLMRequests:    s.llmRequests,
 		ToolCalls:      s.toolCalls,
 		ToolFailures:   s.toolFailures,
 	}

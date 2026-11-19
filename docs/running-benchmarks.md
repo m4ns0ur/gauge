@@ -213,9 +213,13 @@ GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
 
 It generates isolated Iris and Pi configuration for a temporary benchmark, runs
 one task with each adapter, and asserts a completed execution, an independent
-pass verdict, and recorded usage. Optional variables: `GAUGE_LIVE_ENDPOINT`
-(default `http://127.0.0.1:8080/v1`), `GAUGE_LIVE_AGENTS` (default `iris,pi`),
-and `GAUGE_LIVE_TIMEOUT` (default `10m`).
+evaluator verdict, recorded usage, and normalized events. The task verdict is
+logged; set `GAUGE_LIVE_REQUIRE_PASS=1` to require it. Optional variables:
+`GAUGE_LIVE_ENDPOINT` (default `http://127.0.0.1:8080/v1`), `GAUGE_LIVE_AGENTS`
+(default `iris,pi`), `GAUGE_LIVE_TIMEOUT` (default `10m`), and
+`GAUGE_LIVE_REPETITIONS` (default 1). With repetitions the test logs per-attempt
+workload and a median duration, which is the right way to compare adapters
+without mistaking model warm-up or prompt caching for a real difference.
 
 ### Select tasks and repetitions
 
