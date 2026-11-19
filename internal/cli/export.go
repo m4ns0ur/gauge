@@ -2,9 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"io"
-	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -44,27 +41,11 @@ func (a *App) exportCommand() *cobra.Command {
 				fmt.Fprintf(a.Err, "warning: %v\n", listErr)
 			}
 			doc := report.Build(exp, attempts)
+			doc.Summary.Behavior = loadBehavior(store, attempts)
 
-			var (
-				w    io.Writer = cmd.OutOrStdout()
-				file *os.File
-				path string
-			)
-			if output != "" && output != "-" {
-				abs, err := filepath.Abs(output)
-				if err != nil {
-					return Exitf(ExitUsage, "resolve output path: %v", err)
-				}
-				if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
-					return Exitf(ExitInfrastructure, "create output directory: %v", err)
-				}
-				f, err := os.Create(abs)
-				if err != nil {
-					return Exitf(ExitInfrastructure, "create %s: %v", abs, err)
-				}
-				file = f
-				path = abs
-				w = f
+			w, closeOutput, path, err := writeTarget(cmd, output)
+			if err != nil {
+				return err
 			}
 
 			var writeErr error
@@ -74,11 +55,8 @@ func (a *App) exportCommand() *cobra.Command {
 			case "markdown":
 				writeErr = report.WriteMarkdown(w, doc)
 			}
-			if file != nil {
-				closeErr := file.Close()
-				if writeErr == nil {
-					writeErr = closeErr
-				}
+			if closeErr := closeOutput(); writeErr == nil {
+				writeErr = closeErr
 			}
 			if writeErr != nil {
 				return Exitf(ExitInfrastructure, "write export: %v", writeErr)

@@ -5,9 +5,10 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - **Last updated:** 2026-11-19
 - **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`,
   storage tests covering migrations, reconnects, legacy import, corruption, and
-  normalized metric/check/artifact rows, and the opt-in live integration test
-  passing with the real `iris` (commit `d1af31d`) and `pi` 1.5.2 binaries against
-  a local `qwen3.6-35B-Q1` endpoint.
+  normalized metric/check/artifact rows, comparison tests covering fingerprint
+  guards and per-task deltas, and the opt-in live integration test passing with
+  the real `iris` (commit `d1af31d`) and `pi` 1.5.2 binaries against a local
+  `qwen3.6-35B-Q1` endpoint.
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -23,7 +24,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 4 — Independent evaluation | **Done** | Separate evaluator process, versioned JSON, timeouts, infra-vs-task failure split, artifact capture, tests. |
 | 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
-| 7 — Comparison and metrics reporting | **Partial** | Aggregates, per-task/category, availability rules, repetitions, reports done; `compare` and tool-call aggregation missing. |
+| 7 — Comparison and metrics reporting | **Done** | Aggregates, per-task/category tables, availability rules, repetitions, `gauge compare` with fingerprint guards, tool-call aggregates from event logs. |
 | 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
 
@@ -147,9 +148,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   provenance, child-row replacement, ordering, foreign keys, schema guards,
   corrupt databases, legacy import, and redaction.
 
-### Phase 7 — Comparison and metrics reporting: Partial
-
-**Works now**
+### Phase 7 — Comparison and metrics reporting: Done
 
 - Pass rate with explicit numerator/denominator; evaluator errors and
   unevaluated/setup failures reported separately.
@@ -157,13 +156,22 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   reliability counters, and terminal/Markdown/JSON rendering
   ([internal/metrics](../internal/metrics/metrics.go),
   [internal/report](../internal/report/report.go)).
-
-**Remaining**
-
-- `gauge compare <experiment-a> <experiment-b>` with fingerprint guards and
-  configuration/environment difference display.
-- Tool-call and behavioral aggregates from stored events.
-- Explicit holdout-suite guidance in tooling (documented methodology only today).
+- `gauge compare <experiment-a> <experiment-b>` refuses experiments whose task
+  IDs, content fingerprints, or fixture revisions differ, and lists the
+  mismatched tasks. Recorded differences in agent, model, provider, adapter
+  configuration, suite label, repetitions, Gauge version, and platform are
+  displayed rather than normalized away
+  ([internal/report/compare.go](../internal/report/compare.go),
+  [internal/cli/compare.go](../internal/cli/compare.go)).
+- Per-task and per-category comparisons label each task improved, regressed, or
+  unchanged with explicit pass-rate denominators, so a regression stays visible
+  when the aggregate improves.
+- Tool-call totals and failures are reconstructed from normalized event logs,
+  with coverage (`event logs for X/Y attempts`), in single-experiment reports and
+  comparisons. Missing logs are unavailable, never zero
+  ([internal/metrics/behavior.go](../internal/metrics/behavior.go)).
+- Holdout-suite guidance and the comparison guards are documented in
+  [metrics.md](metrics.md).
 
 ### Phase 8 — Initial benchmark suite and docs: Partial
 
@@ -215,7 +223,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 6. Evaluate independently with hidden checks | **Done**. |
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
 | 8. Persist and inspect after restart | **Done** — SQLite metadata and file artifacts. |
-| 9. Compare two experiments with per-task outcomes and honest metrics | **Not started** — aggregates exist; `compare` does not. |
+| 9. Compare two experiments with per-task outcomes and honest metrics | **Done** — `gauge compare` with fingerprint guards and per-task deltas. |
 | 10. Reproduce a published baseline | **Not started**. |
 
 ## Deliberate deviations
@@ -235,10 +243,9 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
 
 ## Next actions, in order
 
-1. Add `gauge compare` with revision guards and difference reporting.
-2. Grow the task catalog and add `coding`, `repository`, and `full` suites.
-3. Run and publish the Iris/Pi baseline.
-4. Add the Docker execution backend and enforce isolation policy.
+1. Grow the task catalog and add `coding`, `repository`, and `full` suites.
+2. Run and publish the Iris/Pi baseline.
+3. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 

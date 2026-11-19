@@ -54,7 +54,7 @@ Adapters are built in and registered at startup.
 | `internal/experiment` | Run tasks × repetitions sequentially, persist progress, stop cleanly on cancellation. |
 | `internal/storage` | SQLite experiment/attempt metadata, normalized checks/artifacts/metrics, and artifact file paths and hashes. |
 | `internal/metrics` | Aggregate outcomes with explicit denominators and availability rules. |
-| `internal/report` | Render terminal, Markdown, and JSON views of the same document. |
+| `internal/report` | Render terminal, Markdown, and JSON views, including guarded two-experiment comparisons. |
 | `internal/events` | Normalized event vocabulary and a concurrency-safe JSONL recorder. |
 | `internal/cli` | Command surface, presentation, exit codes. |
 
@@ -177,8 +177,6 @@ cannot observe token usage leaves it absent, and reports say `unavailable`.
   Docker backend can enforce mount and network isolation without changing task or
   adapter contracts. The `execution.network` field is currently declarative in the
   local backend.
-- **Comparison** builds on the persisted per-attempt records; it must refuse to
-  compare experiments whose suite or task fingerprints differ.
 - **Artifact inventory queries** can build on the normalized `artifacts` table
   without adding columns to the attempt record.
 

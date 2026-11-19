@@ -33,11 +33,12 @@ type Summary struct {
 	// SetupFailures counts attempts whose setup commands failed.
 	SetupFailures int `json:"setup_failures"`
 
-	PassRate    *float64 `json:"pass_rate,omitempty"`
-	Duration    *Stats   `json:"duration,omitempty"`
-	Usage       *Usage   `json:"usage,omitempty"`
-	PerTask     []Group  `json:"per_task"`
-	PerCategory []Group  `json:"per_category"`
+	PassRate    *float64  `json:"pass_rate,omitempty"`
+	Duration    *Stats    `json:"duration,omitempty"`
+	Usage       *Usage    `json:"usage,omitempty"`
+	Behavior    *Behavior `json:"behavior,omitempty"`
+	PerTask     []Group   `json:"per_task"`
+	PerCategory []Group   `json:"per_category"`
 }
 
 // Group is an outcome breakdown for a task or category.

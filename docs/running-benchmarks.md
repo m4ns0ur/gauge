@@ -147,6 +147,7 @@ gauge run --agent <id> --task <task-id> [--task <task-id> ...] [--repetitions N]
 gauge runs list [--json]
 gauge runs show <experiment-id> [--json]
 gauge inspect <attempt-id> [--json]
+gauge compare <experiment-a> <experiment-b> [--format text|markdown|json] [--output FILE]
 gauge export <experiment-id> [--format json|markdown] [--output FILE]
 ```
 
@@ -315,6 +316,26 @@ gauge export <experiment-id> --format markdown --output report.md
 gauge export <experiment-id> --format json > report.json
 ```
 
+## Comparing experiments
+
+```bash
+gauge compare <experiment-a> <experiment-b>
+gauge compare <experiment-a> <experiment-b> --format markdown --output comparison.md
+gauge compare <experiment-a> <experiment-b> --format json
+```
+
+The comparison refuses experiments whose task selections differ: same task IDs,
+content fingerprints, and fixture revisions are required. Recorded differences in
+agent, model, provider, adapter configuration, repetitions, Gauge version, and
+platform are displayed instead of normalized away. Per-task and per-category
+tables mark each task as improved, regressed, or unchanged, so a per-task
+regression remains visible even when the aggregate pass rate improves.
+
+Tool-call counts come from the normalized event logs and show their coverage
+(`event logs for X/Y attempts`); missing logs are reported as unavailable, never
+as zero. Use a holdout suite for final comparisons: tune on the public suites,
+then compare holdout results separately; see [metrics.md](metrics.md).
+
 ## Doctor
 
 `gauge doctor` checks configuration, the SQLite store (opening it applies pending
@@ -350,6 +371,7 @@ not fail the command.
 | Evaluator error, not a task failure | Read `evaluator-stdout.log`/`evaluator-stderr.log`; confirm the command exits 0 and prints one valid JSON object. |
 | `not_evaluated` | Setup or workspace preparation failed; inspect the setup logs and `gauge inspect <attempt-id>`. |
 | `runs show` reports "experiment not found" | You are reading a different store. Use the `--data-dir` value printed by the run, or pass the same `--config`. |
+| `compare` reports "experiments are not comparable" | The task selections differ by ID, content fingerprint, or fixture revision. Compare runs of the same suite/task revisions; the error lists the mismatched tasks. |
 | Workspace missing after a failure | Check `retention.workspace`; the default keeps failed workspaces. |
 | `database schema N is newer than this Gauge supports` | The data directory was written by a newer Gauge. Upgrade Gauge or use a different `--data-dir`. |
 | Legacy runs are missing from `runs list` | The store imports the previous JSON metadata once, when the database is empty. Check `gauge doctor` for skipped legacy records. |

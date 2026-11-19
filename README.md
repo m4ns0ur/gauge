@@ -14,8 +14,8 @@ model configuration, execution environment — not just the underlying model.
 > [§17 of the implementation plan](docs/gauge-implementation-plan.md): task and
 > suite contracts, a pinned-fixture workspace, the runner, an independent
 > evaluator, a deterministic fake adapter, SQLite-backed storage, reports, and a
-> CLI. It also includes the built-in Iris and Pi adapters. Experiment comparison,
-> the full task catalog, and the Docker backend are the next phases.
+> CLI. It also includes the built-in Iris and Pi adapters and two-experiment
+> comparison. The full task catalog and the Docker backend are the next phases.
 > See the [implementation tracker](docs/implementation-status.md) for per-phase
 > status, [docs/adapters.md](docs/adapters.md) for the adapter contract and Iris/Pi
 > configuration, and
@@ -34,6 +34,7 @@ gauge --config examples/gauge.toml doctor
 gauge --config examples/gauge.toml tasks list
 gauge --config examples/gauge.toml run --suite smoke --agent fake
 gauge --config examples/gauge.toml runs list
+gauge --config examples/gauge.toml compare <experiment-id-a> <experiment-id-b>
 gauge --config examples/gauge.toml export <experiment-id> --format markdown
 ```
 
@@ -73,7 +74,7 @@ policy come from `[adapters.iris.options]` or `[adapters.pi.options]` (see
 | Deterministic fake adapter for tests | Implemented |
 | Iris adapter (`iris jsonl`) with normalized events, usage, and model discovery | Implemented |
 | Pi adapter (`pi --mode json`) with normalized events, usage/cost, and version | Implemented |
-| Experiment comparison (`gauge compare`) | Planned |
+| Experiment comparison (`gauge compare`) with fingerprint guards | Implemented |
 | Docker execution backend | Planned |
 
 ## Core ideas

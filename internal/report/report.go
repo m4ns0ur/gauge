@@ -183,6 +183,7 @@ func writeMarkdownSummary(b *errWriter, s metrics.Summary) {
 	b.printf("- Setup failures: %d\n", s.SetupFailures)
 	b.printf("- Duration (all attempts): %s\n", durationText(s.Duration))
 	b.printf("- Token usage: %s\n", usageText(s.Usage))
+	b.printf("- Tool calls: %s\n", behaviorText(s.Behavior))
 	b.printf("\n")
 }
 
@@ -212,6 +213,7 @@ func WriteTerminal(w io.Writer, doc Document) error {
 		s.Timeouts, s.Cancelled, s.ExecutionFailures, s.SetupFailures)
 	fmt.Fprintf(w, "Duration:   %s\n", durationText(s.Duration))
 	fmt.Fprintf(w, "Tokens:     %s\n", usageText(s.Usage))
+	fmt.Fprintf(w, "Tools:      %s\n", behaviorText(s.Behavior))
 	fmt.Fprintln(w)
 
 	tw := tabwriter.NewWriter(w, 2, 4, 2, ' ', 0)
@@ -260,6 +262,14 @@ func durationText(stats *metrics.Stats) string {
 			metrics.FormatDurationMS(stats.Min), metrics.FormatDurationMS(stats.Max), stats.Count)
 	}
 	return text
+}
+
+func behaviorText(b *metrics.Behavior) string {
+	if b == nil {
+		return "unavailable (no readable event logs)"
+	}
+	text := fmt.Sprintf("%d calls, %d failed", b.ToolCalls, b.ToolFailures)
+	return fmt.Sprintf("%s [event logs for %d/%d attempts]", text, b.AttemptsWithEvents, b.Attempts)
 }
 
 func usageText(u *metrics.Usage) string {

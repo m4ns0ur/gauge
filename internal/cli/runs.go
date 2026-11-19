@@ -139,6 +139,7 @@ func (a *App) runsShowCommand() *cobra.Command {
 				fmt.Fprintf(a.Err, "warning: %v\n", listErr)
 			}
 			doc := report.Build(exp, attempts)
+			doc.Summary.Behavior = loadBehavior(store, attempts)
 			if asJSON {
 				return report.WriteJSON(cmd.OutOrStdout(), doc)
 			}

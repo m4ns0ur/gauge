@@ -121,6 +121,7 @@ determines pass/fail.`,
 			exp, attempts, runErr := coordinator.Run(ctx)
 			if exp != nil {
 				doc := report.Build(exp, attempts)
+				doc.Summary.Behavior = loadBehavior(store, attempts)
 				if err := report.WriteTerminal(a.Out, doc); err != nil {
 					return Exitf(ExitInfrastructure, "%v", err)
 				}

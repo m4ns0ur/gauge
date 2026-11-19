@@ -149,6 +149,7 @@ configurations.`,
 		a.runCommand(),
 		a.runsCommand(),
 		a.inspectCommand(),
+		a.compareCommand(),
 		a.exportCommand(),
 	)
 	return root

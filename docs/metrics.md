@@ -89,22 +89,32 @@ signals for agents that do not expose them.
 
 ## Comparing experiments
 
-The next phase adds comparison. The persisted identity already supports the required
-guards:
+`gauge compare` uses the persisted identity to decide whether two experiments may
+be compared:
 
-- suite fingerprint and exact ordered task IDs;
-- per-task content fingerprints (spec + prompt + evaluator assets + fixture
-  revision);
-- adapter configuration fingerprint (over the redacted config) and observed agent
-  version;
-- model/provider identifiers where reported;
-- OS, architecture, Go version, execution backend, and data directory.
+- task IDs, per-task content fingerprints (spec + prompt + evaluator assets +
+  fixture revision) must match; otherwise the comparison is refused with the
+  mismatched tasks listed;
+- adapter configuration fingerprint (over the redacted config), observed agent
+  version, model/provider, suite label, repetitions, Gauge version, backend, and
+  platform are displayed when they differ;
+- per-task and per-category pass-rate deltas are reported alongside the aggregate,
+  so a regression in one task remains visible when the total improves;
+- evaluator errors, unevaluated attempts, timeouts, duration, token usage, and
+  tool-call counts stay separate and carry their coverage; unavailable data is
+  reported as unavailable.
 
-A comparison must refuse to present materially different task or suite revisions as
-directly comparable, and must surface configuration/environment differences rather
-than silently normalizing them. Until comparison exists, inspect the two
-experiments with `gauge runs show --json` and compare the recorded fingerprints
-explicitly.
+`--format markdown` and `--format json` produce the same document for reports and
+automation.
+
+## Holdout suites
+
+Keep a small holdout suite out of the tuning loop. Use the public suites while
+developing or configuring an agent, then run the holdout suite and compare its
+results separately for a less biased view.
+Gauge records the exact suite and task fingerprints, and `gauge compare` refuses
+mismatched selections, so a holdout comparison is explicit in the recorded
+metadata rather than an implicit convention.
 
 ## Current boundaries
 
@@ -112,6 +122,5 @@ explicitly.
 - No weighted cross-task score; `score` from an evaluator is recorded but not
   aggregated.
 - No peak memory, CPU/GPU utilization, or throughput collection.
-- No tool-call aggregate in the summary yet (raw events are preserved for later
-  analysis).
-- No comparison command yet.
+- Tool-call aggregation is limited to counts and failures from normalized events;
+  behavioral judgments such as "tests were run" are not inferred.
