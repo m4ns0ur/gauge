@@ -16,6 +16,7 @@ import (
 	"github.com/m4ns0ur/gauge/internal/adapter"
 	"github.com/m4ns0ur/gauge/internal/adapters/fake"
 	"github.com/m4ns0ur/gauge/internal/adapters/iris"
+	"github.com/m4ns0ur/gauge/internal/adapters/pi"
 	"github.com/m4ns0ur/gauge/internal/config"
 	"github.com/m4ns0ur/gauge/internal/storage"
 	"github.com/m4ns0ur/gauge/internal/suite"
@@ -185,6 +186,7 @@ func (a *App) registry() *adapter.Registry {
 	reg := adapter.NewRegistry()
 	reg.Register(fake.New())
 	reg.Register(iris.New())
+	reg.Register(pi.New())
 	return reg
 }
 

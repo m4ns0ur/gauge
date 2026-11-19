@@ -63,3 +63,24 @@ func GreetAll(names []string) []string {
 # model = "qwen3.6-35B-Q1"
 # base_url = "http://127.0.0.1:8080/v1"
 # settings_file = "examples/iris-settings.toml"
+
+# Pi adapter (optional). Uncomment to run the same suites against Pi:
+#
+#   gauge run --config examples/gauge.toml --suite smoke --agent pi
+#
+# Gauge gives each attempt a fresh Pi agent directory, so nothing from ~/.pi
+# applies. models_file is copied into it and is how a custom endpoint and model
+# are configured (Pi has no --base-url flag). Adapter paths resolve against the
+# working directory, so run commands from the repository root. A run's --model
+# flag wins over model.
+#
+# [adapters.pi]
+# enabled = true
+#
+# [adapters.pi.options]
+# command = "pi"
+# provider = "gauge-local"
+# model = "qwen3.6-35B-Q1"
+# thinking = "off"
+# models_file = "examples/pi-models.json"
+# forward_env = ["OPENAI_API_KEY"]

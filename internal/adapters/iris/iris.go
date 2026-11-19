@@ -15,6 +15,8 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -152,19 +154,9 @@ func resolveSettingsFile(value string) (string, error) {
 // resolveExecutable finds the Iris binary and returns an absolute path so the
 // process can be started from any working directory.
 func resolveExecutable(command string) (string, error) {
-	path, err := exec.LookPath(command)
+	path, err := proc.ResolveExecutable(command)
 	if err != nil {
-		return "", fmt.Errorf(
-			"executable %q not found: install Iris or set adapters.%s.options.command to its path",
-			command, ID,
-		)
-	}
-	if !filepath.IsAbs(path) {
-		absolute, absErr := filepath.Abs(path)
-		if absErr != nil {
-			return "", fmt.Errorf("resolve executable %q: %w", command, absErr)
-		}
-		path = absolute
+		return "", fmt.Errorf("%w; install Iris or set adapters.%s.options.command to its path", err, ID)
 	}
 	return path, nil
 }
@@ -200,8 +192,10 @@ func (a *Adapter) Run(ctx context.Context, req adapter.RunRequest, emit func(eve
 	}
 	defer cleanupHome()
 
+	settingsHash := ""
 	if settingsFile != "" {
-		if err := copySettings(settingsFile, home); err != nil {
+		settingsHash, err = copySettings(settingsFile, home)
+		if err != nil {
 			return fail(result, err, notify), nil
 		}
 	}
@@ -289,8 +283,10 @@ func (a *Adapter) Run(ctx context.Context, req adapter.RunRequest, emit func(eve
 		state.sessionBaseURL = session.BaseURL
 	}
 	result.Usage = state.runUsage()
-	if meta, marshalErr := json.Marshal(state.metadata(command, cfg.BaseURL)); marshalErr == nil {
-		result.Metadata = meta
+	meta := state.metadata(command, cfg.BaseURL)
+	meta.SettingsFileSHA256 = settingsHash
+	if data, marshalErr := json.Marshal(meta); marshalErr == nil {
+		result.Metadata = data
 	}
 	if cmd.ProcessState != nil {
 		if code := cmd.ProcessState.ExitCode(); code >= 0 {
@@ -322,19 +318,22 @@ func (a *Adapter) Run(ctx context.Context, req adapter.RunRequest, emit func(eve
 	return result, nil
 }
 
-// copySettings installs an Iris settings.toml into the attempt's isolated home.
-// The copy is per attempt, so an agent that edits its own settings cannot change
-// the configuration a later repetition starts from.
-func copySettings(source, home string) error {
+// copySettings installs an Iris settings.toml into the attempt's isolated home
+// and returns the SHA-256 of the content, which is recorded with the attempt so
+// a later settings change is visible. The copy is per attempt, so an agent that
+// edits its own settings cannot change the configuration a later repetition
+// starts from.
+func copySettings(source, home string) (string, error) {
 	data, err := os.ReadFile(source)
 	if err != nil {
-		return fmt.Errorf("iris: read settings_file: %w", err)
+		return "", fmt.Errorf("iris: read settings_file: %w", err)
 	}
 	target := filepath.Join(home, "settings.toml")
 	if err := os.WriteFile(target, data, 0o600); err != nil {
-		return fmt.Errorf("iris: write settings.toml: %w", err)
+		return "", fmt.Errorf("iris: write settings.toml: %w", err)
 	}
-	return nil
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:]), nil
 }
 
 // makeHome returns an isolated Iris home for this attempt. Iris always persists
@@ -433,6 +432,7 @@ type adapterMetadata struct {
 	FilesChanged       int      `json:"files_changed,omitempty"`
 	Truncated          bool     `json:"truncated,omitempty"`
 	RawOutputError     string   `json:"raw_output_error,omitempty"`
+	SettingsFileSHA256 string   `json:"settings_file_sha256,omitempty"`
 }
 
 // sessionInfo is the subset of Iris's session header Gauge can use.

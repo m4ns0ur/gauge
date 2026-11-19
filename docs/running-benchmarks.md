@@ -6,9 +6,10 @@
 - Git (used to materialize fixture workspaces)
 - The toolchain each task's evaluator expects (the bundled task needs `go`)
 
-No model or API key is required for the fake-adapter smoke run. To run Iris you
-also need the `iris` executable on `PATH` (or configured explicitly) and a
-running OpenAI-compatible model endpoint.
+No model or API key is required for the fake-adapter smoke run. To run Iris or Pi
+you also need the matching executable on `PATH` (or configured explicitly) and a
+model provider: a running OpenAI-compatible endpoint for Iris, or a Pi provider
+with either a local `models.json` endpoint or credentials.
 
 ## Build
 
@@ -99,6 +100,35 @@ task needs it.
 binary is a warning, and `gauge agents list` shows the adapter as `unavailable`;
 `gauge run --agent iris` then fails before any attempt starts.
 
+### Pi adapter configuration
+
+```toml
+[adapters.pi]
+enabled = true
+
+[adapters.pi.options]
+command = "pi"                             # executable name or path
+provider = "gauge-local"                   # --provider (requires a model)
+model = "qwen3.6-35B-Q1"                   # --model; a run's --model wins
+thinking = "off"                           # off|minimal|low|medium|high|xhigh|max
+tools = ["read", "bash", "edit", "write"]  # --tools allowlist
+models_file = "examples/pi-models.json"    # copied to <pi-home>/models.json
+auth_file = "/path/to/auth.json"           # optional; copied to <pi-home>/auth.json
+forward_env = ["OPENAI_API_KEY"]           # names only; values never persisted
+```
+
+Pi has no `--base-url` flag, so custom endpoints are configured in a
+`models.json` copied from `models_file`
+([examples/pi-models.json](../examples/pi-models.json) is a starting point).
+Gauge gives every attempt a fresh `PI_CODING_AGENT_DIR`, so nothing from `~/.pi`
+applies; `auth_file` copies Pi's `auth.json` when a provider uses stored
+credentials, and `forward_env` forwards named host environment variables. Adapter
+option paths resolve against Gauge's working directory.
+
+A Pi run is `completed` only when the stream settles cleanly and the final
+assistant message stops normally. Pi exits 0 even after a failed model response,
+so the exit code alone is never treated as success.
+
 ## Commands
 
 ```bash
@@ -157,6 +187,20 @@ inside the attempt, so repetitions cannot share agent state. See
 limitations (agent version is unavailable, and headless shell commands need an
 allowlist or approval hook).
 
+### Run against Pi
+
+```bash
+gauge run --config examples/gauge.toml --suite smoke --agent pi
+gauge run --config examples/gauge.toml --suite smoke --agent pi --model provider/model
+```
+
+As with Iris, the task content is unchanged. Pi's agent directory is a fresh
+`pi-home/` inside each attempt, so credentials, model catalogs, and trust state
+never leak between repetitions. `pi --version` is recorded as the agent version,
+and usage/cost come from the assistant messages when Pi reports them. See
+[adapters.md](adapters.md#pi-implemented) for the event mapping and limitations,
+including automatic retries that can consume a short timeout.
+
 ### Select tasks and repetitions
 
 ```bash
@@ -197,10 +241,11 @@ workspace. Retention only removes the `workspace/` directory.
 
 Tool caches, isolated agent home directories, and the evaluator scratch directory
 (`evaluation-scratch/`, `setup-home/`, `setup-tmp/`, `agent-home/`, `agent-tmp/`,
-`iris-home/`) are removed after **every** attempt unless the policy is `keep_all`.
-They are not evidence — the evaluator's verdict, logs, checks, and artifacts are
-captured separately — and retaining Go build caches alone can consume hundreds of
-megabytes per attempt. Use `keep_all` when debugging evaluator scratch contents.
+`iris-home/`, `pi-home/`) are removed after **every** attempt unless the policy
+is `keep_all`. They are not evidence — the evaluator's verdict, logs, checks, and
+artifacts are captured separately — and retaining Go build caches alone can
+consume hundreds of megabytes per attempt. Use `keep_all` when debugging
+evaluator scratch contents.
 
 Layout:
 
@@ -280,6 +325,9 @@ warning) do not fail the command.
 | `runs show` reports "experiment not found" | You are reading a different store. Use the `--data-dir` value printed by the run, or pass the same `--config`. |
 | Workspace missing after a failure | Check `retention.workspace`; the default keeps failed workspaces. |
 | `agent "iris" is unavailable` | The `iris` executable is not on `PATH`. Install it or set `[adapters.iris.options] command`. |
+| `agent "pi" is unavailable` | The `pi` executable is not on `PATH`. Install it or set `[adapters.pi.options] command`. |
 | Iris fails with a model or connection error | Check `base_url` and that the endpoint is running. A fresh Iris home has no default model: set `model` or pass `--model`. |
 | Iris shell tool calls are denied | Headless Iris fails closed without an allowlist or approval hook. Configure `[security.shell]` in the `settings_file` copy. |
+| Pi reports "No API key found" | Configure `models.json` through `models_file` (with a dummy key for local endpoints), copy `auth.json` through `auth_file`, or forward the provider's environment variable with `forward_env`. |
+| Pi attempts keep retrying a refused connection | Pi retries failed requests automatically. Fix the endpoint or model configuration; set a shorter task timeout if the retry budget exceeds it. |
 | Runs are slower than expected | Duration includes workspace clone, setup, agent, and evaluation. The bundled task compiles the fixture in setup and in the evaluator. |

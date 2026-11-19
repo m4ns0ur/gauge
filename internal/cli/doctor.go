@@ -147,7 +147,6 @@ func (a *App) runDoctor() []doctorCheck {
 		}
 		add("agent:"+info.ID, "ok", "configured")
 	}
-	add("agent:pi", "warn", "not implemented in this build; see docs/adapters.md")
 	add("sandbox", "warn", "local execution is not a security sandbox; tasks and evaluators are trusted code")
 	return checks
 }

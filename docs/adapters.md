@@ -220,7 +220,9 @@ never decides whether the task passed.
 - `stderr.log` — Iris diagnostics, including startup failures that produce no
   JSON records at all.
 - `result.Metadata` — command, session ID, record counts, unrecognized event
-  types, LLM request count, tool executions, and working-tree change count.
+  types, LLM request count, tool executions, working-tree change count, and the
+  SHA-256 of the copied `settings_file` so a later settings change is visible in
+  the experiment record.
 - Usage — Iris's run summary when available (it includes compaction and retries),
   otherwise the result record, otherwise the sum of per-call usage events.
   Missing usage stays unavailable.
@@ -242,98 +244,158 @@ never decides whether the task passed.
 - A run that fails before the model responds has no usage and usually no model
   information; those fields are reported as unavailable.
 
-## Pi feasibility (next)
+## Pi (implemented)
 
-Observed from the installed `@earendil-works/pi-coding-agent` 1.5.2 package and
-its documented JSON mode.
+`internal/adapters/pi` drives the installed `pi` binary through its documented
+one-shot JSON mode. It was implemented against Pi 1.5.2 (verified 2026-11-19) and
+Pi's published JSON event-stream documentation, with no private package imports.
 
-### Supported public interface
+### Invocation
 
-- One-shot JSON: `pi --mode json --no-session "<prompt>"`, with `--provider` and
-  `--model`; prompt may also arrive on stdin. Bare `pi` starts the TUI.
-- The stream is strict JSONL. The first record is a session header
-  (`{"type":"session","version":3,"id":…,"timestamp":…,"cwd":…}`), followed by
-  `agent_start`, `turn_start`, `message_start/update/end`,
-  `tool_execution_start/update/end`, `turn_end`, `agent_end`, and the terminal
-  `agent_settled`.
-- `message_end` is the authoritative final message and carries:
-
-```json
-{
-  "role": "assistant",
-  "content": [{"type": "text", "text": "…"}],
-  "provider": "fake",
-  "model": "fake-model",
-  "usage": {"input": 11, "output": 3, "totalTokens": 14, "cost": {…}},
-  "stopReason": "stop",
-  "responseId": "…",
-  "durationMs": 16
-}
+```text
+pi --mode json --no-session [--provider <p>] [--model <m>] \
+   [--thinking <level>] [--tools <list>]        # prompt arrives on stdin
 ```
 
-- `-v/--version` prints the version (for example `1.5.2`).
-- Cancellation: print/JSON modes handle SIGTERM and SIGHUP gracefully and flush
-  output; SIGINT is not handled and exits 130. Gauge's process-group termination
-  covers the timeout path.
-- State is stored under an agent directory (`~/.pi/agent` by default), relocatable
-  with `PI_CODING_AGENT_DIR`. `--no-session` avoids session persistence.
+- The prompt is written to stdin, so it never appears in the process list and is
+  not subject to argument-size limits. Pi reserves stdout for its JSONL stream;
+  diagnostics go to stderr.
+- `PI_CODING_AGENT_DIR` is always a fresh directory inside the attempt directory.
+  Pi stores model catalogs, credentials, and trust state there, so a shared
+  directory would let attempts observe each other.
+- `PI_OFFLINE=1`, `PI_SKIP_VERSION_CHECK=1`, and `PI_TELEMETRY=0` are pinned for
+  the agent process; the agent directory is removed as scratch after the attempt
+  unless retention is `keep_all`.
+- The agent version is probed with `pi --version` (a supported public flag) using
+  the same isolated environment. A failed probe records no version.
+- The process runs with the controlled attempt environment, its working
+  directory set to the workspace, and Gauge's process-group supervision.
 
-### Gaps and caveats
+### Configuration
 
-- No `--base-url` CLI flag. A custom endpoint is configured through
-  `<agent-dir>/models.json` (`providers.<id>.baseUrl`), so Gauge must generate that
-  file per attempt when a local/remote endpoint is used.
-- The JSON-mode exit code is **not** a run-success signal: failed or aborted
-  responses still exit 0. Success must come from `message_end.stopReason`
-  (`stop` vs `error`/`aborted`) and `agent_settled`.
-- Startup failures are stderr-only with no JSON records.
-- All prompts are supplied at startup in JSON mode; steering or cost statistics
-  need RPC (`--mode rpc`), which has no official Go client (the JSONL protocol is
-  documented).
-- Agent version is not in the stream; run `pi --version` once as a probe.
-- Even with a fake provider, Pi may create `models-store.json`/`auth.json` in the
-  agent directory. Isolate that directory per attempt.
-- Sessions are written unless `--no-session` is passed.
+```toml
+[adapters.pi]
+enabled = true
 
-### Recommended adapter strategy
+[adapters.pi.options]
+command = "pi"                             # executable name or path
+provider = "gauge-local"                   # --provider (requires a model)
+model = "qwen3.6-35B-Q1"                   # --model; a run's --model wins
+thinking = "off"                           # off|minimal|low|medium|high|xhigh|max
+tools = ["read", "bash", "edit", "write"]  # --tools allowlist
+models_file = "examples/pi-models.json"    # copied to <pi-home>/models.json
+auth_file = "/path/to/auth.json"           # optional; copied to <pi-home>/auth.json
+forward_env = ["OPENAI_API_KEY"]           # names only; values are never persisted
+```
 
-Run `pi --mode json --no-session` once per attempt:
+Pi has no `--base-url` flag, so a custom OpenAI-compatible endpoint is configured
+in `models.json` (`providers.<id>.baseUrl`, `api`, `apiKey`, `models`).
+`models_file` is copied per attempt, so Gauge never reads or shares `~/.pi`;
+[examples/pi-models.json](../examples/pi-models.json) is a starting point.
+`auth_file` supports provider credentials stored in Pi's `auth.json`.
+`forward_env` forwards named environment variables from Gauge's process into the
+agent process, which is the way to pass API keys without writing them to disk;
+only the names appear in the recorded configuration.
 
-- set `PI_CODING_AGENT_DIR=<attempt>/pi-home`, generate `models.json` from adapter
-  configuration when an endpoint is configured, and set `PI_OFFLINE=1`,
-  `PI_SKIP_VERSION_CHECK=1`, `PI_TELEMETRY=0`;
-- pass `--provider`/`--model`, run with cwd = workspace;
-- parse `message_end` for final text, provider/model, usage/cost, and `stopReason`;
-  stop at `agent_settled`;
-- map `stopReason` to completion; do not trust the exit code alone;
-- report `pi --version` as the agent version.
+Adapter option paths, including `models_file` and `auth_file`, resolve against
+Gauge's working directory rather than the config file; use absolute paths in
+scripts.
 
-Telemetry available: token usage and computed cost (from the model cost table),
-provider/model/response ID, per-tool duration and error flags, per-message duration,
-session ID, retry/compaction events. Unavailable/reconstructable-only: run-level
-duration, tool counters, git diff summary, reliable run-outcome exit codes, a
-base-URL CLI override.
+### Event mapping
 
+| Pi record | Gauge event |
+|---|---|
+| `session` | session ID and format version, recorded as metadata |
+| `agent_start` / `agent_end` | omitted; raw output remains in `stdout.log` |
+| `turn_start` / `turn_end` | `agent.state` (`turn_started`, `turn_finished`) |
+| `message_end` (assistant) | `agent.message` for text blocks; `usage`; provider/model/stop-reason tracking |
+| `message_end` (system/user/tool result) | omitted |
+| `message_start` / `message_update` | omitted (`message_end` is authoritative) |
+| `tool_execution_start` | `tool.call` (call ID, tool name, arguments) |
+| `tool_execution_end` | `tool.result` (text output, failure flag from `isError`) |
+| `tool_execution_update` | omitted; raw output remains in `stdout.log` |
+| `auto_retry_start` | `warning` with attempt/max and error text |
+| `auto_retry_end` | unsuccessful final error captured for the run failure |
+| `compaction_start` / `compaction_end` | `agent.state` |
+| `agent_settled` | lifecycle `agent_settled`; settlement flag for the outcome |
+| `extension_error` | `warning` |
+| `queue_update`, `entry_appended`, `session_info_changed`, `thinking_level_changed`, `summarization_retry_*` | omitted; raw output remains in `stdout.log` |
+
+Tool inputs and outputs are truncated in normalized events (4 KiB and 8 KiB); the
+complete payloads stay in `stdout.log`. Unknown record types are counted in
+metadata rather than fabricated into events.
+
+### Outcome
+
+Pi exits **0** even when the assistant response failed, so the adapter derives the
+run outcome from the stream:
+
+- `completed` — `agent_settled` was observed with `aborted: false`, and the final
+  assistant message's `stopReason` is `stop`. A `length` stop is also completed,
+  and is recorded as truncated with a warning.
+- `failed` — an `error`, `aborted`, `deferred`, `toolUse`, or `pending` stop
+  reason, an aborted settlement, a missing `agent_settled`, a non-zero exit, or
+  no final assistant message.
+- `timed_out` / `cancelled` — from the attempt context.
+
+The evaluator still decides whether the task passed.
+
+### Telemetry and artifacts
+
+- `stdout.log` — the raw JSONL stream, unchanged.
+- `stderr.log` — Pi diagnostics. Startup failures such as missing credentials
+  appear only here, and the first line is included in the recorded failure.
+- Usage — summed from assistant `message_end` records: input, output, and Pi's
+  `totalTokens`. Pi's total includes cache reads and writes, so it can exceed
+  input + output. Cost is recorded only when Pi computes a non-zero estimate;
+  zero can mean the model has no pricing configured, so it is treated as
+  unavailable.
+- Model/provider — taken from the final assistant message, preferring
+  `responseModel` (the concrete model reported by the provider).
+- Agent version — `pi --version`.
+- `result.Metadata` — session ID/version, stop reason, settlement, retries,
+  compactions, tool counters, response ID, record counts, unrecognized event
+  types, raw-output errors, the SHA-256 of the copied `models_file`, and whether
+  an `auth_file` was installed.
+
+### Known limitations
+
+- Pi retries failed requests automatically (three attempts with backoff by
+  default). Those retries are recorded as warnings, but they can consume much of a
+  short attempt timeout when an endpoint is down.
+- Deferred provider responses cannot be resumed by Gauge; they are reported as a
+  failed run.
+- `--no-session` is always passed, so sessions are ephemeral. The session file is
+  not kept as an attempt artifact.
+- Project-local Pi resources (`AGENTS.md`, extensions, skills, prompt templates)
+  follow Pi's own discovery and trust behavior. Global `~/.pi` resources never
+  apply because the agent directory is isolated.
+- Headless Pi uses its normal tool approval behavior. As with every local adapter,
+  this is not a security sandbox.
 ## Adapter testing
 
-- `internal/adapters/iris` unit tests feed recorded JSONL streams through the
-  translator: a successful run, a retried turn, partial output before a timeout,
-  unknown and malformed records, and usage precedence. They need no agent and no
+- `internal/adapters/iris` and `internal/adapters/pi` unit tests feed recorded
+  JSONL streams through their translators: successful runs, retried turns,
+  partial output, error and aborted terminals, truncation, unknown and malformed
+  records, usage precedence, and raw-copy failures. They need no agent and no
   network.
 - Stub executables exercise the real subprocess path: argv, prompt on stdin,
-  working directory, raw stdout capture, session-header discovery, settings-file
-  copying, non-zero exit, missing executable, timeout, and cancellation. These
-  tests skip on Windows, which has no POSIX shell.
-- The CLI test suite runs the smoke suite end-to-end with an Iris stub, proving
-  that the adapter satisfies the same runner/evaluator/storage lifecycle as
-  `fake`.
-- A live run against a local model endpoint is manual for now: point
-  `[adapters.iris.options] settings_file` at an Iris settings file (for the model
-  and shell policy) and run the smoke suite. The standard test suite never calls
-  a model or the network.
-- Pi will follow the same pattern once it is implemented: recorded streams plus a
-  stub executable, with any live check kept opt-in.
+  working directory, raw stdout capture, configuration-file copying, version
+  probing (Pi), environment forwarding (Pi), non-zero exit and missing
+  executables, timeout, and cancellation. These tests skip on Windows, which has
+  no POSIX shell.
+- A Pi-specific regression test pins the important quirk that a failed assistant
+  response produces exit code 0: the adapter must still record `failed`.
+- The CLI test suite runs the smoke suite end-to-end with an Iris stub and a Pi
+  stub, proving that both adapters satisfy the same runner/evaluator/storage
+  lifecycle as `fake`.
+- Live runs against a local model endpoint are manual for now: configure
+  `[adapters.iris.options] settings_file` or `[adapters.pi.options] models_file`
+  and run the smoke suite. Real `iris` and `pi` binaries were used to verify the
+  streams, argument handling, version/model discovery, and failure paths. The
+  standard test suite never calls a model or the network.
 
-Both adapters are expected to satisfy the existing contract without private
-imports or source changes. Iris is implemented; Pi remains a documented plan and
-does not appear in `gauge agents list` yet.
+Both adapters are built into Gauge, are configurable only through adapter
+options, and use public interfaces without private imports or source changes.
+An opt-in automated live integration test is still outstanding; see the
+[implementation tracker](implementation-status.md).

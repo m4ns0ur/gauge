@@ -313,6 +313,90 @@ command = %q
 	}
 }
 
+// TestRunWithPiStub proves the Pi adapter satisfies the same attempt lifecycle
+// as the other adapters. Pi exits 0 even when the model response fails, so this
+// test also pins that the adapter's verdict comes from the event stream.
+func TestRunWithPiStub(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("stub agent executables require a POSIX shell")
+	}
+	bench, _ := newBench(t)
+
+	stub := filepath.Join(t.TempDir(), "pi-stub")
+	testutil.WriteFile(t, stub, `#!/bin/sh
+if [ "$1" = "--version" ]; then
+  printf '9.9.9-stub\n'
+  exit 0
+fi
+cat > /dev/null
+printf 42 > answer.txt
+printf '%s\n' '{"type":"session","version":3,"id":"sess-cli","timestamp":"2026-01-01T00:00:00.000Z","cwd":"."}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"wrote answer.txt"},{"type":"toolCall","id":"call-1","name":"write","arguments":{"path":"answer.txt"}}],"provider":"local","model":"m1","usage":{"input":10,"output":5,"totalTokens":15},"stopReason":"toolUse"}}'
+printf '%s\n' '{"type":"tool_execution_start","toolCallId":"call-1","toolName":"write","args":{"path":"answer.txt"}}'
+printf '%s\n' '{"type":"tool_execution_end","toolCallId":"call-1","toolName":"write","result":{"content":[{"type":"text","text":"wrote"}]},"isError":false,"durationMs":2}'
+printf '%s\n' '{"type":"message_end","message":{"role":"assistant","content":[{"type":"text","text":"done"}],"provider":"local","model":"m1","usage":{"input":20,"output":5,"totalTokens":25},"stopReason":"stop"}}'
+printf '%s\n' '{"type":"agent_settled","aborted":false}'
+`, 0o755)
+	bench.WriteConfig(fmt.Sprintf(`
+[adapters.pi.options]
+command = %q
+`, stub))
+
+	stdout, stderr, err := execCLI(t, bench, "run", "--suite", "smoke", "--agent", "pi")
+	if err != nil {
+		t.Fatalf("run: %v\nstdout:\n%s\nstderr:\n%s", err, stdout, stderr)
+	}
+	if !strings.Contains(stdout, "Passed: 1/1 (100.0%)") {
+		t.Errorf("run output:\n%s", stdout)
+	}
+
+	expID := extractExperimentID(t, stdout)
+	store, err := storage.New(bench.DataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	attempts, err := store.ListAttempts(expID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(attempts) != 1 {
+		t.Fatalf("attempts = %d", len(attempts))
+	}
+	attempt := attempts[0]
+	if attempt.AgentID != "pi" {
+		t.Errorf("agent = %q", attempt.AgentID)
+	}
+	if attempt.Execution.Completion != adapter.Completed {
+		t.Errorf("execution = %+v", attempt.Execution)
+	}
+	if attempt.AgentVersion != "9.9.9-stub" {
+		t.Errorf("agent version = %q", attempt.AgentVersion)
+	}
+	if attempt.Provider != "local" || attempt.Model != "m1" {
+		t.Errorf("provider/model = %q/%q", attempt.Provider, attempt.Model)
+	}
+	if attempt.Usage == nil || attempt.Usage.TotalTokens == nil || *attempt.Usage.TotalTokens != 40 {
+		t.Errorf("usage = %+v", attempt.Usage)
+	}
+	if attempt.Outcome != storage.OutcomePassed {
+		t.Errorf("outcome = %s", attempt.Outcome)
+	}
+
+	dir, err := store.AttemptDir(expID, attempt.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := attempt.Artifacts["stdout.log"]; !ok {
+		t.Errorf("stdout.log is not recorded: %+v", attempt.Artifacts)
+	}
+	eventsLog := testutil.ReadFile(t, filepath.Join(dir, "events.jsonl"))
+	for _, want := range []string{`"type":"agent.message"`, `"type":"tool.call"`, `"source":"pi"`} {
+		if !strings.Contains(eventsLog, want) {
+			t.Errorf("events.jsonl missing %s:\n%s", want, eventsLog)
+		}
+	}
+}
+
 func TestRunRepetitions(t *testing.T) {
 	bench, _ := newBench(t)
 	stdout, _, err := execCLI(t, bench, "run", "--task", "write-answer", "--agent", "fake", "--repetitions", "2", "--notes", "repetition test")
@@ -470,7 +554,7 @@ func TestDoctor(t *testing.T) {
 	if err != nil {
 		t.Fatalf("doctor: %v\n%s", err, stdout)
 	}
-	for _, want := range []string{"config", "data", "tasks", "suites", "git", "agent:fake", "agent:iris", "sandbox"} {
+	for _, want := range []string{"config", "data", "tasks", "suites", "git", "agent:fake", "agent:iris", "agent:pi", "sandbox"} {
 		if !strings.Contains(stdout, want) {
 			t.Errorf("doctor output missing %q:\n%s", want, stdout)
 		}
@@ -498,8 +582,8 @@ func TestAgentsList(t *testing.T) {
 	if !strings.Contains(stdout, "fake") || !strings.Contains(stdout, "valid") {
 		t.Errorf("agents list:\n%s", stdout)
 	}
-	if !strings.Contains(stdout, "iris") {
-		t.Errorf("agents list does not mention the built-in Iris adapter:\n%s", stdout)
+	if !strings.Contains(stdout, "iris") || !strings.Contains(stdout, "pi") {
+		t.Errorf("agents list does not mention all built-in adapters:\n%s", stdout)
 	}
 
 	stdout, _, err = execCLI(t, bench, "agents", "list", "--json")
@@ -513,20 +597,24 @@ func TestAgentsList(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout), &rows); err != nil {
 		t.Fatalf("parse agents JSON: %v\n%s", err, stdout)
 	}
-	found := false
+	statuses := make(map[string]string, len(rows))
 	for _, row := range rows {
-		if row.ID != "iris" {
+		statuses[row.ID] = row.Status
+	}
+	for _, id := range []string{"fake", "iris", "pi"} {
+		status, ok := statuses[id]
+		if !ok {
+			t.Errorf("adapter %q is not registered", id)
 			continue
 		}
-		found = true
-		// Iris may or may not be installed on the machine running the tests;
-		// a missing executable is "unavailable", never a config error.
-		if row.Status != "valid" && row.Status != "unavailable" {
-			t.Errorf("iris config status = %q", row.Status)
+		if id == "fake" {
+			continue
 		}
-	}
-	if !found {
-		t.Error("iris adapter is not registered")
+		// Iris and Pi may or may not be installed on the machine running the
+		// tests; a missing executable is "unavailable", never a config error.
+		if status != "valid" && status != "unavailable" {
+			t.Errorf("adapter %q config status = %q", id, status)
+		}
 	}
 }
 

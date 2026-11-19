@@ -2,7 +2,9 @@ package iris
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -239,6 +241,14 @@ cat "$STUB_STREAM"`)
 	}
 	if string(copied) != settings {
 		t.Errorf("copied settings = %q", copied)
+	}
+
+	var meta adapterMetadata
+	if err := json.Unmarshal(result.Metadata, &meta); err != nil {
+		t.Fatalf("metadata: %v", err)
+	}
+	if want := fmt.Sprintf("%x", sha256.Sum256([]byte(settings))); meta.SettingsFileSHA256 != want {
+		t.Errorf("settings hash = %q, want %q", meta.SettingsFileSHA256, want)
 	}
 }
 

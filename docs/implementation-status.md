@@ -2,10 +2,11 @@
 
 Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 
-- **Last updated:** 2026-11-18
-- **Verified with:** `make check` (gofmt, vet, build, tests) and `make run-smoke`;
-  the Iris adapter was also exercised against the locally installed `iris` binary
-  (JSONL stream, error path, model discovery from the session header).
+- **Last updated:** 2026-11-19
+- **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`, and
+  live checks of both adapters against the locally installed `iris` (commit
+  `d1af31d`) and `pi` (1.5.2) binaries: JSONL streams, version/model discovery,
+  startup-failure paths, and retry handling.
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -19,7 +20,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 2 — Task and suite discovery | **Done** | Loaders, `tasks list/show`, `suites list/show`, bundled fixture/task/evaluator/smoke suite. |
 | 3 — Workspace and local runner | **Done** | Fresh pinned clones, setup, hard timeouts, process-group kill, diff capture, retention, coordinator, fake end-to-end tests. |
 | 4 — Independent evaluation | **Done** | Separate evaluator process, versioned JSON, timeouts, infra-vs-task failure split, artifact capture, tests. |
-| 5 — Iris and Pi adapters | **Partial** | Iris is built in (`iris jsonl`): subprocess isolation, event mapping, usage/model discovery, settings copy, stub tests. Pi remains. |
+| 5 — Iris and Pi adapters | **Partial** | Both adapters built in and covered by recorded-stream, stub-executable, and CLI end-to-end tests. The opt-in live integration test remains. |
 | 6 — SQLite persistence and inspection | **Partial** | File store, `runs list/show`, `inspect`, JSON/Markdown export work; SQLite and migrations do not exist. |
 | 7 — Comparison and metrics reporting | **Partial** | Aggregates, per-task/category, availability rules, repetitions, reports done; `compare` and tool-call aggregation missing. |
 | 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
@@ -94,31 +95,34 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   `--home`, the workspace as `--workdir`, the prompt on stdin, and optional
   `--model`, `--base-url`, and `--debug`
   ([internal/adapters/iris](../internal/adapters/iris/iris.go)).
-- The typed event stream is translated to normalized events (messages, tool
-  calls/results, usage, errors, lifecycle) and unknown records are counted rather
-  than invented. Raw stdout/stderr are kept as artifacts
-  ([stream.go](../internal/adapters/iris/stream.go)).
-- Completion is derived from the process exit code plus the `result`, `error`,
-  and `agent.finished` records; timeouts and cancellation map to distinct
-  outcomes. Usage and model/provider are recorded only from the stream/session
-  header, and agent version is reported as unavailable because Iris has no
-  version flag.
-- `settings_file` copies an Iris settings file into the per-attempt home, so
-  security policy and model settings are explicit and isolated; the home is
-  removed as scratch unless retention is `keep_all`.
-- Tests cover recorded-stream translation and stub-executable runs, and a CLI test
-  runs the smoke suite through the Iris adapter end to end. `gauge agents list`
-  shows the adapter and `gauge doctor` checks for the binary without failing when
-  it is absent (`adapter.UnavailableError`).
+- `internal/adapters/pi` runs `pi --mode json --no-session` with a fresh
+  `PI_CODING_AGENT_DIR`, optional `--provider`/`--model`/`--thinking`/`--tools`,
+  copied `models.json`/`auth.json`, and named environment forwarding
+  ([internal/adapters/pi](../internal/adapters/pi/pi.go)).
+- Both translate their typed event streams to normalized events (messages, tool
+  calls/results, usage, errors, lifecycle) and count unknown records rather than
+  inventing them. Raw stdout/stderr are kept as artifacts.
+- Completion is derived from the stream, not the agent's claim. Pi is the important
+  case: it exits 0 after a failed response, so `agent_settled` plus the final
+  `stopReason` decide the outcome. Usage, model/provider, and agent version (Pi)
+  are recorded only when the agent reports them; Iris has no version flag and
+  reports no version.
+- Adapter configuration is strict and validated before a run, including missing
+  executables (`adapter.UnavailableError`), missing settings/models/auth files, and
+  invalid thinking/tool/environment settings.
+- Tests cover recorded streams, stub executables (argv, stdin, cwd, artifact
+  capture, config copying, version probing, environment forwarding, exit codes,
+  timeout, cancellation), and CLI end-to-end runs of the smoke suite for both
+  adapters. `gauge agents list`/`gauge doctor` report missing binaries without
+  failing the environment check.
 
 **Remaining**
 
-- Pi adapter (`pi --mode json --no-session`), following the same pattern.
-- An opt-in live integration test against a local model endpoint. A live run was
-  verified manually, but there is no automated end-to-end check that needs a
+- An opt-in live integration test against a user-configured model endpoint. Live
+  runs of both real binaries were verified manually (including model/version
+  discovery and failure paths), but no automated test completes a task with a
   model.
-- Provider-reported cost and agent version remain unavailable; do not fabricate
-  them.
+- A published baseline report belongs to phase 8.
 
 ### Phase 6 — SQLite persistence and inspection: Partial
 
@@ -202,8 +206,8 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 |---|---|
 | 1. Install/run as a standalone CLI | **Done** — `make build` builds and installs. |
 | 2. List and validate agent-neutral tasks/suites | **Done**. |
-| 3. Configure Iris and Pi via public interfaces | **Partial** — Iris via TOML (`command`, `model`, `base_url`, `settings_file`); Pi not implemented. |
-| 4. Run the same suite against either agent with pinned fixtures | **Partial** — Iris runs the smoke suite (stub and manual live check); Pi pending. |
+| 3. Configure Iris and Pi via public interfaces | **Partial** — both configurable via TOML and validated; the opt-in live check is pending. |
+| 4. Run the same suite against either agent with pinned fixtures | **Partial** — both adapters run the smoke suite end to end with stubs and were exercised against the real binaries; no live model task completion yet. |
 | 5. Enforce per-attempt and evaluator timeouts | **Done**. |
 | 6. Evaluate independently with hidden checks | **Done**. |
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
@@ -221,20 +225,19 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md):
 | Fixtures | Bare repositories plus readable sources and `scripts/fixture.sh`. |
 | Suites | Single YAML files rather than directories. |
 | Evaluator | Positional args + `GAUGE_*` env, strict JSON, candidate failures exit 0. |
-| Adapters | `fake` and `iris` are built in; `pi` is deferred. |
+| Adapters | `fake`, `iris`, and `pi` are built in. |
 | Isolation | Local only; `execution.network` is declarative, not enforced. |
 | Diff capture | Temporary index so the candidate's index and worktree are untouched. |
 
 ## Next actions, in order
 
-1. Implement the Pi adapter (`pi --mode json --no-session`) and its tests.
-2. Add an opt-in live integration test for Iris (and then Pi), gated by explicit
+1. Add an opt-in live integration test for Iris and Pi, gated by explicit
    environment configuration for a local model endpoint.
-3. Add SQLite storage and migrations behind the existing operations.
-4. Add `gauge compare` with revision guards and difference reporting.
-5. Grow the task catalog and add `coding`, `repository`, and `full` suites.
-6. Run and publish the Iris/Pi baseline.
-7. Add the Docker execution backend and enforce isolation policy.
+2. Add SQLite storage and migrations behind the existing operations.
+3. Add `gauge compare` with revision guards and difference reporting.
+4. Grow the task catalog and add `coding`, `repository`, and `full` suites.
+5. Run and publish the Iris/Pi baseline.
+6. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 
