@@ -201,6 +201,22 @@ and usage/cost come from the assistant messages when Pi reports them. See
 [adapters.md](adapters.md#pi-implemented) for the event mapping and limitations,
 including automatic retries that can consume a short timeout.
 
+### Live agent integration test
+
+The standard test suite never calls a model. With an installed agent and a
+running OpenAI-compatible endpoint, run the opt-in end-to-end check:
+
+```bash
+GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
+  go test ./internal/cli -run TestLiveAdapters -v -timeout 30m
+```
+
+It generates isolated Iris and Pi configuration for a temporary benchmark, runs
+one task with each adapter, and asserts a completed execution, an independent
+pass verdict, and recorded usage. Optional variables: `GAUGE_LIVE_ENDPOINT`
+(default `http://127.0.0.1:8080/v1`), `GAUGE_LIVE_AGENTS` (default `iris,pi`),
+and `GAUGE_LIVE_TIMEOUT` (default `10m`).
+
 ### Select tasks and repetitions
 
 ```bash

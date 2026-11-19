@@ -5,8 +5,9 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - **Last updated:** 2026-11-19
 - **Verified with:** `make check` (gofmt, vet, build, tests), `make run-smoke`,
   storage tests covering migrations, reconnects, legacy import, corruption, and
-  normalized metric/check/artifact rows, and live checks of both adapters against
-  the locally installed `iris` (commit `d1af31d`) and `pi` (1.5.2) binaries.
+  normalized metric/check/artifact rows, and the opt-in live integration test
+  passing with the real `iris` (commit `d1af31d`) and `pi` 1.5.2 binaries against
+  a local `qwen3.6-35B-Q1` endpoint.
 - **Legend:** **Done** = acceptance criteria met and covered by tests; **Partial** =
   usable subset implemented, remaining work listed; **Not started** = design or
   reconnaissance only.
@@ -20,7 +21,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 2 — Task and suite discovery | **Done** | Loaders, `tasks list/show`, `suites list/show`, bundled fixture/task/evaluator/smoke suite. |
 | 3 — Workspace and local runner | **Done** | Fresh pinned clones, setup, hard timeouts, process-group kill, diff capture, retention, coordinator, fake end-to-end tests. |
 | 4 — Independent evaluation | **Done** | Separate evaluator process, versioned JSON, timeouts, infra-vs-task failure split, artifact capture, tests. |
-| 5 — Iris and Pi adapters | **Partial** | Both adapters built in and covered by recorded-stream, stub-executable, and CLI end-to-end tests. The opt-in live integration test remains. |
+| 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Partial** | Aggregates, per-task/category, availability rules, repetitions, reports done; `compare` and tool-call aggregation missing. |
 | 8 — Initial benchmark suite and docs | **Partial** | Docs and one smoke task exist; the 15–25 task catalog, broader suites, and baseline report do not. |
@@ -87,9 +88,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - Candidate diffs are captured before evaluation; evaluator scratch and caches are
   cleaned unless `keep_all` ([internal/evaluator](../internal/evaluator/invoke.go)).
 
-### Phase 5 — Iris and Pi adapters: Partial
-
-**Works now**
+### Phase 5 — Iris and Pi adapters: Done
 
 - `internal/adapters/iris` runs `iris jsonl` once per attempt with a fresh
   `--home`, the workspace as `--workdir`, the prompt on stdin, and optional
@@ -115,14 +114,12 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   timeout, cancellation), and CLI end-to-end runs of the smoke suite for both
   adapters. `gauge agents list`/`gauge doctor` report missing binaries without
   failing the environment check.
-
-**Remaining**
-
-- An opt-in live integration test against a user-configured model endpoint. Live
-  runs of both real binaries were verified manually (including model/version
-  discovery and failure paths), but no automated test completes a task with a
-  model.
-- A published baseline report belongs to phase 8.
+- An opt-in live integration test (`internal/cli/live_test.go`) drives both real
+  binaries against a running OpenAI-compatible endpoint:
+  `GAUGE_LIVE=1 GAUGE_LIVE_MODEL=<model> go test ./internal/cli -run TestLiveAdapters -v -timeout 30m`.
+  It passed for both adapters against a local `qwen3.6-35B-Q1` endpoint
+  (Iris ~9.8s, Pi ~5.8s, both tasks evaluated as passed with usage recorded).
+  The standard suite skips it and never calls a model.
 
 ### Phase 6 — SQLite persistence and inspection: Done
 
@@ -209,8 +206,8 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 |---|---|
 | 1. Install/run as a standalone CLI | **Done** — `make build` builds and installs. |
 | 2. List and validate agent-neutral tasks/suites | **Done**. |
-| 3. Configure Iris and Pi via public interfaces | **Partial** — both configurable via TOML and validated; the opt-in live check is pending. |
-| 4. Run the same suite against either agent with pinned fixtures | **Partial** — both adapters run the smoke suite end to end with stubs and were exercised against the real binaries; no live model task completion yet. |
+| 3. Configure Iris and Pi via public interfaces | **Done** — both configurable via TOML, validated, and exercised live. |
+| 4. Run the same suite against either agent with pinned fixtures | **Done** — both adapters run the same task end to end with real binaries, fresh fixtures, and a live model. |
 | 5. Enforce per-attempt and evaluator timeouts | **Done**. |
 | 6. Evaluate independently with hidden checks | **Done**. |
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
@@ -235,12 +232,10 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
 
 ## Next actions, in order
 
-1. Add an opt-in live integration test for Iris and Pi, gated by explicit
-   environment configuration for a local model endpoint.
-2. Add `gauge compare` with revision guards and difference reporting.
-3. Grow the task catalog and add `coding`, `repository`, and `full` suites.
-4. Run and publish the Iris/Pi baseline.
-5. Add the Docker execution backend and enforce isolation policy.
+1. Add `gauge compare` with revision guards and difference reporting.
+2. Grow the task catalog and add `coding`, `repository`, and `full` suites.
+3. Run and publish the Iris/Pi baseline.
+4. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 

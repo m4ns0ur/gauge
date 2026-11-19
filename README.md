@@ -152,6 +152,10 @@ instead of `go`:
 
 ```bash
 ./scripts/go.sh test ./...
+
+# Opt-in end-to-end check against a real agent and a local model endpoint
+GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
+  ./scripts/go.sh test ./internal/cli -run TestLiveAdapters -v -timeout 30m
 ```
 
 ## Safety

@@ -389,13 +389,20 @@ The evaluator still decides whether the task passed.
 - The CLI test suite runs the smoke suite end-to-end with an Iris stub and a Pi
   stub, proving that both adapters satisfy the same runner/evaluator/storage
   lifecycle as `fake`.
-- Live runs against a local model endpoint are manual for now: configure
-  `[adapters.iris.options] settings_file` or `[adapters.pi.options] models_file`
-  and run the smoke suite. Real `iris` and `pi` binaries were used to verify the
-  streams, argument handling, version/model discovery, and failure paths. The
-  standard test suite never calls a model or the network.
+- The opt-in live integration test in `internal/cli/live_test.go` runs both real
+  binaries against an OpenAI-compatible endpoint and asserts a completed,
+  independently passed task with recorded usage:
+
+  ```bash
+  GAUGE_LIVE=1 GAUGE_LIVE_MODEL=qwen3.6-35B-Q1 \
+    go test ./internal/cli -run TestLiveAdapters -v -timeout 30m
+  ```
+
+  It generates isolated Iris/Pi configuration, so `~/.iris` and `~/.pi` are never
+  read. Optional variables: `GAUGE_LIVE_ENDPOINT`, `GAUGE_LIVE_AGENTS`,
+  `GAUGE_LIVE_TIMEOUT`. The standard suite skips the test and never calls a model
+  or the network. It passed for both adapters against a local
+  `qwen3.6-35B-Q1` endpoint (Iris 9.8s, Pi 5.8s).
 
 Both adapters are built into Gauge, are configurable only through adapter
 options, and use public interfaces without private imports or source changes.
-An opt-in automated live integration test is still outstanding; see the
-[implementation tracker](implementation-status.md).
