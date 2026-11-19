@@ -1,0 +1,7 @@
+schema_version: 1
+id: operational
+name: Operational recovery tasks
+description: Diagnose and repair failing builds or tests without changing benchmark tests.
+tasks:
+  - id: ops-build-recovery
+  - id: ops-test-recovery

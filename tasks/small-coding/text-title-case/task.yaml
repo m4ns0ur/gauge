@@ -1,0 +1,33 @@
+schema_version: 1
+id: text-title-case
+name: Implement title casing
+category: small-coding
+difficulty: easy
+description: "Implement TitleCase with Unicode-aware casing and trimmed spacing."
+tags:
+  - go
+  - strings
+  - unicode
+
+fixture:
+  path: ../../../fixtures/text-go.git
+  revision: b843faf1713d3fcef6ab8bac0d5995f8f8dff787
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "Hidden test covers Unicode casing and whitespace normalization."

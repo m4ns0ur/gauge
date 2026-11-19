@@ -22,8 +22,8 @@ func TestBundledContent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load bundled tasks: %v", err)
 	}
-	if len(tasks) < 10 {
-		t.Errorf("loaded %d bundled tasks, want at least 10", len(tasks))
+	if len(tasks) < 15 {
+		t.Errorf("loaded %d bundled tasks, want at least 15", len(tasks))
 	}
 	byID := make(map[string]bool, len(tasks))
 	for _, bundled := range tasks {
@@ -46,6 +46,13 @@ func TestBundledContent(t *testing.T) {
 		"notes-cli-exit-codes",
 		"notes-delete",
 		"notes-cli-tag-filter",
+		"text-title-case",
+		"text-join-nonempty",
+		"text-is-palindrome",
+		"notes-json-persistence",
+		"notes-search",
+		"ops-build-recovery",
+		"ops-test-recovery",
 	} {
 		if !byID[id] {
 			t.Errorf("bundled task %q is missing", id)
@@ -63,7 +70,7 @@ func TestBundledContent(t *testing.T) {
 			t.Errorf("suite %q does not resolve: %v", bundled.ID, err)
 		}
 	}
-	for _, id := range []string{"smoke", "coding", "repository", "full"} {
+	for _, id := range []string{"smoke", "coding", "repository", "operational", "full"} {
 		if !suiteIDs[id] {
 			t.Errorf("bundled suite %q is missing", id)
 		}

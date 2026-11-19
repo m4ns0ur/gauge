@@ -1,0 +1,33 @@
+schema_version: 1
+id: text-is-palindrome
+name: Detect palindromes
+category: small-coding
+difficulty: medium
+description: "Implement IsPalindrome ignoring case, spaces, and punctuation."
+tags:
+  - go
+  - unicode
+  - strings
+
+fixture:
+  path: ../../../fixtures/text-go.git
+  revision: b843faf1713d3fcef6ab8bac0d5995f8f8dff787
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "Hidden test pins the normalization rule: letters and digits only, case-insensitive."

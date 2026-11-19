@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+build-recovery|^TestGreetingRecovered$|The repository builds and Greeting returns the expected text.|The repository still does not build or Greeting is wrong.

@@ -1,0 +1,32 @@
+schema_version: 1
+id: text-join-nonempty
+name: Join non-empty parts
+category: small-coding
+difficulty: easy
+description: "Implement JoinNonEmpty with trimming and empty-part skipping."
+tags:
+  - go
+  - strings
+
+fixture:
+  path: ../../../fixtures/text-go.git
+  revision: b843faf1713d3fcef6ab8bac0d5995f8f8dff787
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "Hidden test checks trimming, empty parts, nil input, and multi-character separators."

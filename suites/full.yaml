@@ -10,6 +10,13 @@ tasks:
   - id: text-dedupe
   - id: text-normalize-space
   - id: text-snake-case
+  - id: text-title-case
+  - id: text-join-nonempty
+  - id: text-is-palindrome
   - id: notes-cli-exit-codes
   - id: notes-delete
   - id: notes-cli-tag-filter
+  - id: notes-json-persistence
+  - id: notes-search
+  - id: ops-build-recovery
+  - id: ops-test-recovery

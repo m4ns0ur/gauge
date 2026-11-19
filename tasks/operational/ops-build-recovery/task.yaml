@@ -1,0 +1,32 @@
+schema_version: 1
+id: ops-build-recovery
+name: Recover a repository that does not build
+category: operational
+difficulty: medium
+description: "Diagnose and fix a compile error without changing tests."
+tags:
+  - go
+  - recovery
+  - build
+  - debugging
+
+fixture:
+  path: ../../../fixtures/ops-build-go.git
+  revision: 18a375ad8c86ddc8764d4e39bf0637a622f83da4
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "The fixture intentionally calls an undefined helper; no setup step is declared because the build fails."

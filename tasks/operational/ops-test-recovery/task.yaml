@@ -1,0 +1,34 @@
+schema_version: 1
+id: ops-test-recovery
+name: Fix a failing test suite without editing tests
+category: operational
+difficulty: medium
+description: "Diagnose a failing average calculation and fix the production code."
+tags:
+  - go
+  - recovery
+  - tests
+  - debugging
+
+fixture:
+  path: ../../../fixtures/ops-tests-go.git
+  revision: 548cefa2cfc0cee61a51d8fc912bed7a40792b29
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "The fixture ships a correct failing test; the hidden test adds negative and single-value cases."

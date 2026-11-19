@@ -131,20 +131,21 @@ so the exit code alone is never treated as success.
 
 ## Bundled benchmark content
 
-The repository ships an initial 10-task Go catalog and four suites:
+The repository ships a 17-task Go catalog and five suites:
 
 | Suite | Tasks | Purpose |
 |---|---:|---|
 | `smoke` | 1 | Fast end-to-end validation with the fake adapter. |
-| `coding` | 5 | Focused implementation tasks in small Go libraries. |
+| `coding` | 8 | Focused implementation tasks in small Go libraries. |
 | `repository` | 4 | Bug fixes and behavior changes in small repositories. |
-| `full` | 10 | Every bundled task; use for comparisons, not routine checks. |
+| `operational` | 2 | Recover a failing build or test suite without editing tests. |
+| `full` | 17 | Every bundled task; use for comparisons, not routine checks. |
 
-Task categories are `small-coding` (5), `repository-engineering` (4), and
-`complex-engineering` (1). Each task pins a full fixture commit, keeps hidden
-tests in its evaluator assets, and has provenance metadata. The catalog is
-intentionally small and Go-only for now; quality and determinism matter more than
-count, and the target is 15–25 tasks including operational/recovery work.
+Task categories are `small-coding` (8), `repository-engineering` (4),
+`complex-engineering` (3), and `operational` (2). Each task pins a full fixture
+commit, keeps hidden tests in its evaluator assets, and has provenance metadata.
+The catalog is Go-only for now; quality and determinism matter more than count,
+and this set is within the 15–25 task target.
 
 ```bash
 gauge tasks list                    # discover tasks

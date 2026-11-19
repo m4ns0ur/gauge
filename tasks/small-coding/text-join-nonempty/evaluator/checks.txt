@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+join-nonempty|^TestJoinNonEmpty$|JoinNonEmpty trims, skips empty parts, and joins with the separator.|JoinNonEmpty keeps blank parts or the wrong separators.

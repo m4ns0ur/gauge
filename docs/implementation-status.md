@@ -25,7 +25,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Done** | Aggregates, per-task/category tables, availability rules, repetitions, `gauge compare` with fingerprint guards, tool-call aggregates from event logs. |
-| 8 — Initial benchmark suite and docs | **Partial** | 10-task Go catalog with `smoke`, `coding`, `repository`, and `full` suites and a content test; the 15–25 target (including operational tasks) and published baseline remain. |
+| 8 — Initial benchmark suite and docs | **Partial** | 17-task Go catalog across small/repository/complex/operational categories with five suites and a content test; the published baseline remains. |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
 
 ## Phase detail
@@ -175,37 +175,40 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 
 ### Phase 8 — Initial benchmark suite and docs: Partial
 
-**Works now**
-
-- Ten deterministic Go tasks across three categories:
-  - small coding: `text-truncate`, `text-dedupe`, `text-normalize-space`,
-    `text-snake-case`, `notes-delete` (5);
-  - repository engineering: `greeting-all`, `text-reverse-unicode`,
-    `text-wordcount`, `notes-cli-exit-codes` (4);
-  - complex engineering: `notes-cli-tag-filter` (multi-package change) (1).
-- Two new pinned fixtures ([text-go](../fixtures/src/text-go),
-  [notes-go](../fixtures/src/notes-go)) plus the existing greeting fixture. Every
-  task pins a full commit SHA, keeps hidden tests in evaluator assets, and
-  records provenance/license.
-- `smoke`, `coding`, `repository`, and `full` suites
-  ([suites](../suites)). `full` contains the entire catalog and is checked against
-  it automatically.
+- Seventeen deterministic Go tasks across four categories:
+  - small coding (8): `text-truncate`, `text-dedupe`, `text-normalize-space`,
+    `text-snake-case`, `text-title-case`, `text-join-nonempty`,
+    `text-is-palindrome`, `notes-delete`;
+  - repository engineering (4): `greeting-all`, `text-reverse-unicode`,
+    `text-wordcount`, `notes-cli-exit-codes`;
+  - complex engineering (3): `notes-cli-tag-filter`, `notes-json-persistence`,
+    `notes-search` (store + CLI work);
+  - operational (2): `ops-build-recovery` (fix a repository that does not build),
+    `ops-test-recovery` (fix production code behind a correct failing test).
+- Five pinned fixtures ([greeting-go](../fixtures/src/greeting-go),
+  [text-go](../fixtures/src/text-go), [notes-go](../fixtures/src/notes-go),
+  [ops-build-go](../fixtures/src/ops-build-go),
+  [ops-tests-go](../fixtures/src/ops-tests-go)). Every task pins a full commit
+  SHA, keeps hidden tests in evaluator assets, and records provenance/license.
+- `smoke`, `coding`, `repository`, `operational`, and `full` suites
+  ([suites](../suites)). `full` contains the entire catalog and is checked
+  against it automatically.
 - [internal/content](../internal/content/content_test.go) loads every bundled
   task and suite in tests, verifies fixture revisions and evaluator assets, and
   fails if a task is missing from `full`.
 - Task evaluators are independent `go test` runs over hidden tests copied into a
-  scratch workspace; they were verified to fail on the unsolved fixture and pass
-  with reference solutions.
+  scratch workspace. The sixteen new evaluators were verified to fail on the
+  unsolved fixture and pass with reference solutions; representative tasks also
+  ran end to end through the runner and evaluator, and the existing greeting
+  evaluator is covered by the smoke run.
 - Usage, task format, adapter, metrics, architecture, running, and status docs
   are current.
 
 **Remaining**
 
-- Grow the catalog to the 15–25 target, adding operational/recovery tasks and
-  more complex multi-package work.
-- Run and publish the initial Iris/Pi baseline with the full catalog
-  (phase 8 acceptance).
-- Add a second language only after the Go execution/evaluator model is stable.
+- Run and publish the initial Iris/Pi baseline with the full catalog (the last
+  phase 8 acceptance item). The local model endpoint must be running.
+- Further tasks are optional; 17 is within the 15–25 target.
 
 ### Phase 9 — Docker execution backend: Not started
 
@@ -261,10 +264,8 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
 
 ## Next actions, in order
 
-1. Expand the 10-task catalog to the 15–25 target (operational/recovery tasks and
-   more complex engineering work).
-2. Run and publish the Iris/Pi baseline on the full catalog.
-3. Add the Docker execution backend and enforce isolation policy.
+1. Run and publish the Iris/Pi baseline on the full catalog.
+2. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 

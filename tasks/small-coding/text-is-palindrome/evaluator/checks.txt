@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+palindrome|^TestIsPalindrome$|IsPalindrome ignores case, spaces, punctuation, and Unicode symbols.|IsPalindrome returns wrong results for normalized text.

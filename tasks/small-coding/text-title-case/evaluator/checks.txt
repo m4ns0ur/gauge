@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+title-case|^TestTitleCase$|TitleCase capitalizes words and normalizes whitespace.|TitleCase returns wrong casing or spacing.

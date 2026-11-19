@@ -1,0 +1,3 @@
+# id|test regexp|passed message|failed message
+search|^TestSearch$|Search matches note text case-insensitively in store order.|Search returns wrong matches or empty-term results.
+search-cli|^TestSearchCommand$|search prints matches and rejects a missing term.|search does not filter output or validate its argument.

@@ -15,8 +15,8 @@ model configuration, execution environment — not just the underlying model.
 > suite contracts, a pinned-fixture workspace, the runner, an independent
 > evaluator, a deterministic fake adapter, SQLite-backed storage, reports, and a
 > CLI. It also includes the built-in Iris and Pi adapters, two-experiment
-> comparison, and an initial 10-task catalog with four suites. Expanding the
-> catalog and the Docker backend are the next steps.
+> comparison, and a 17-task catalog with five suites. The published baseline and
+> the Docker backend are the next steps.
 > See the [implementation tracker](docs/implementation-status.md) for per-phase
 > status, [docs/adapters.md](docs/adapters.md) for the adapter contract and Iris/Pi
 > configuration, and
@@ -76,7 +76,7 @@ policy come from `[adapters.iris.options]` or `[adapters.pi.options]` (see
 | Iris adapter (`iris jsonl`) with normalized events, usage, and model discovery | Implemented |
 | Pi adapter (`pi --mode json`) with normalized events, usage/cost, and version | Implemented |
 | Experiment comparison (`gauge compare`) with fingerprint guards | Implemented |
-| Bundled catalog (10 Go tasks) and `smoke`/`coding`/`repository`/`full` suites | Implemented (catalog still growing) |
+| Bundled catalog (17 Go tasks) and `smoke`/`coding`/`repository`/`operational`/`full` suites | Implemented |
 | Docker execution backend | Planned |
 
 ## Core ideas

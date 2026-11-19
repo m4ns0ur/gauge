@@ -1,0 +1,34 @@
+schema_version: 1
+id: notes-json-persistence
+name: Persist notes to a JSON file
+category: complex-engineering
+difficulty: medium
+description: "Add optional JSON persistence across CLI invocations."
+tags:
+  - go
+  - cli
+  - store
+  - persistence
+
+fixture:
+  path: ../../../fixtures/notes-go.git
+  revision: 409550fc4651ecd680a5069ae826743941bf4ee0
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "Hidden tests drive the in-process CLI twice with the same data file and cover invalid input."

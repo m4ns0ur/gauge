@@ -1,0 +1,3 @@
+# id|test regexp|passed message|failed message
+data-persistence|^TestDataPersistence$|Notes persist to the data file across CLI invocations.|Notes are not persisted or loaded from the data file.
+invalid-data-file|^TestInvalidDataFile$|An invalid data file fails cleanly and is left untouched.|An invalid data file is ignored or overwritten.

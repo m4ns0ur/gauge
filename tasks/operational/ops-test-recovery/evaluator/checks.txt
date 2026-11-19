@@ -1,0 +1,2 @@
+# id|test regexp|passed message|failed message
+average-recovery|^TestAverageRecovered$|Average returns the exact arithmetic mean, including negatives.|Average still truncates or mishandles the mean.

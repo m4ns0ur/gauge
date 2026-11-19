@@ -7,4 +7,7 @@ tasks:
   - id: text-dedupe
   - id: text-normalize-space
   - id: text-snake-case
+  - id: text-title-case
+  - id: text-join-nonempty
+  - id: text-is-palindrome
   - id: notes-delete

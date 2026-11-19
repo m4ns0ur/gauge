@@ -1,0 +1,34 @@
+schema_version: 1
+id: notes-search
+name: Search notes end to end
+category: complex-engineering
+difficulty: medium
+description: "Add case-insensitive text search to the store and CLI."
+tags:
+  - go
+  - cli
+  - store
+  - search
+
+fixture:
+  path: ../../../fixtures/notes-go.git
+  revision: 409550fc4651ecd680a5069ae826743941bf4ee0
+
+prompt: prompt.md
+
+execution:
+  timeout: 5m
+  network: disabled
+  setup:
+    - [go, build, ./...]
+
+evaluation:
+  path: evaluator
+  command:
+    - ./evaluate.sh
+  timeout: 3m
+
+provenance:
+  origin: Authored for Gauge
+  license: MIT
+  notes: "Hidden tests cover the store search and the CLI subcommand."
