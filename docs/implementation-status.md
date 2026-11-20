@@ -25,7 +25,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Done** | Aggregates, per-task/category tables, availability rules, repetitions, `gauge compare` with fingerprint guards, tool-call aggregates from event logs. |
-| 8 — Initial benchmark suite and docs | **Partial** | 17-task Go catalog across small/repository/complex/operational categories with five suites and a content test; the published baseline remains. |
+| 8 — Initial benchmark suite and docs | **Done** | 17-task Go catalog across four categories, five suites, content test, and a published Iris/Pi baseline (10/17 vs 14/17). |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
 
 ## Phase detail
@@ -173,7 +173,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 - Holdout-suite guidance and the comparison guards are documented in
   [metrics.md](metrics.md).
 
-### Phase 8 — Initial benchmark suite and docs: Partial
+### Phase 8 — Initial benchmark suite and docs: Done
 
 - Seventeen deterministic Go tasks across four categories:
   - small coding (8): `text-truncate`, `text-dedupe`, `text-normalize-space`,
@@ -201,14 +201,14 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   unsolved fixture and pass with reference solutions; representative tasks also
   ran end to end through the runner and evaluator, and the existing greeting
   evaluator is covered by the smoke run.
+- The initial baseline is published:
+  [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md).
+  Iris passed 10/17 (58.8%), Pi 14/17 (82.4%), with one repetition each; three
+  Iris and one Pi attempt timed out, and no evaluator errors occurred. The
+  report records configuration, per-task and per-category outcomes, telemetry
+  caveats, limitations, and task fingerprints.
 - Usage, task format, adapter, metrics, architecture, running, and status docs
   are current.
-
-**Remaining**
-
-- Run and publish the initial Iris/Pi baseline with the full catalog (the last
-  phase 8 acceptance item). The local model endpoint must be running.
-- Further tasks are optional; 17 is within the 15–25 target.
 
 ### Phase 9 — Docker execution backend: Not started
 
@@ -245,7 +245,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
 | 8. Persist and inspect after restart | **Done** — SQLite metadata and file artifacts. |
 | 9. Compare two experiments with per-task outcomes and honest metrics | **Done** — `gauge compare` with fingerprint guards and per-task deltas. |
-| 10. Reproduce a published baseline | **Not started**. |
+| 10. Reproduce a published baseline | **Done** — [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md); Iris 10/17, Pi 14/17, one repetition. |
 
 ## Deliberate deviations
 
@@ -264,8 +264,7 @@ Recorded in [ADR 0001](adr/0001-vertical-slice.md) and
 
 ## Next actions, in order
 
-1. Run and publish the Iris/Pi baseline on the full catalog.
-2. Add the Docker execution backend and enforce isolation policy.
+1. Add the Docker execution backend and enforce isolation policy.
 
 ## Maintaining this file
 
