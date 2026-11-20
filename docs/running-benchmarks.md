@@ -158,9 +158,10 @@ gauge run --suite coding --agent iris
 
 The initial Iris/Pi baseline is
 [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md):
-Iris passed 10/17, Pi 14/17, one repetition each, with no evaluator errors. The
-report includes the exact configuration, suite and task fingerprints, per-task
-outcomes, telemetry caveats, limitations, and reproduction commands.
+Iris passed 14/17, Pi 13/17, one repetition each, with no timeouts or evaluator
+errors. The report includes the exact configuration (including Iris shell allow
+mode), suite and task fingerprints, per-task outcomes, telemetry caveats,
+limitations, and reproduction commands.
 
 ## Commands
 

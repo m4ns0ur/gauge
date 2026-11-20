@@ -25,7 +25,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 5 — Iris and Pi adapters | **Done** | Both adapters built in; recorded-stream, stub-executable, CLI end-to-end, and opt-in live tests against a local model pass. |
 | 6 — SQLite persistence and inspection | **Done** | SQLite schema and migrations, normalized checks/artifacts/metrics, legacy import, `runs list/show`, `inspect`, JSON/Markdown export. |
 | 7 — Comparison and metrics reporting | **Done** | Aggregates, per-task/category tables, availability rules, repetitions, `gauge compare` with fingerprint guards, tool-call aggregates from event logs. |
-| 8 — Initial benchmark suite and docs | **Done** | 17-task Go catalog across four categories, five suites, content test, and a published Iris/Pi baseline (10/17 vs 14/17). |
+| 8 — Initial benchmark suite and docs | **Done** | 17-task Go catalog across four categories, five suites, content test, and a published Iris/Pi baseline (14/17 vs 13/17). |
 | 9 — Docker execution backend | **Not started** | Local backend only; `execution.network` is declarative. |
 
 ## Phase detail
@@ -203,10 +203,10 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
   evaluator is covered by the smoke run.
 - The initial baseline is published:
   [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md).
-  Iris passed 10/17 (58.8%), Pi 14/17 (82.4%), with one repetition each; three
-  Iris and one Pi attempt timed out, and no evaluator errors occurred. The
-  report records configuration, per-task and per-category outcomes, telemetry
-  caveats, limitations, and task fingerprints.
+  Iris passed 14/17 (82.4%), Pi 13/17 (76.5%), with one repetition each; neither
+  agent timed out and no evaluator errors occurred. The report records the
+  allow-mode Iris settings (and the superseded allowlist run), per-task and
+  per-category outcomes, telemetry caveats, limitations, and task fingerprints.
 - Usage, task format, adapter, metrics, architecture, running, and status docs
   are current.
 
@@ -245,7 +245,7 @@ Tracks delivery against the [implementation plan](gauge-implementation-plan.md).
 | 7. Capture logs, events, diffs, metadata, evaluation results | **Done** — events/logs where the adapter produces them. |
 | 8. Persist and inspect after restart | **Done** — SQLite metadata and file artifacts. |
 | 9. Compare two experiments with per-task outcomes and honest metrics | **Done** — `gauge compare` with fingerprint guards and per-task deltas. |
-| 10. Reproduce a published baseline | **Done** — [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md); Iris 10/17, Pi 14/17, one repetition. |
+| 10. Reproduce a published baseline | **Done** — [2026-11-20 local Qwen3.6-35B-Q1](baselines/2026-11-20-local-qwen3.6-35b-q1.md); Iris 14/17, Pi 13/17, one repetition. |
 
 ## Deliberate deviations
 
